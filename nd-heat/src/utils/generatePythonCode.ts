@@ -16,6 +16,8 @@ export function generatePythonCode(params: {
   showContours?: boolean;
   contourLevels?: number;
   showContourLabels?: boolean;
+  selectedPoint?: { x: number; y: number } | null;
+  cutAxis?: "horizontal" | "vertical";
 }): string {
   const {
     xAxis,
@@ -35,6 +37,8 @@ export function generatePythonCode(params: {
     showContours = false,
     contourLevels = 8,
     showContourLabels = true,
+    selectedPoint = null,
+    cutAxis = "horizontal",
   } = params;
 
   const displayFilename = filename || "simulation_sweep_data.csv";
@@ -85,6 +89,51 @@ ${
 `
     : "";
 
+  // Inject 1D Cross-Section subplot if a point is selected
+  const lineCutSnippet = selectedPoint
+    ? `
+# -------------------------------------------------------------
+# 9. 1D Cross-Section (Line Cut) Extraction
+# -------------------------------------------------------------
+fig_1d, ax_1d = plt.subplots(figsize=(6.5, 3.8), dpi=300)
+
+${
+  cutAxis === "horizontal"
+    ? `# Cut along horizontal X at closest Y ~ ${selectedPoint.y}
+target_y = ${selectedPoint.y}
+closest_y_idx = np.argmin(np.abs(Y - target_y))
+actual_y = Y[closest_y_idx]
+x_profile = X
+z_profile = Z[closest_y_idx, :]
+
+ax_1d.plot(x_profile, z_profile, '-o', color='#4f46e5', markersize=4, linewidth=1.5)
+ax_1d.set_title(rf"1D Cross-Section Profile (${yAxis} = {actual_y:.4f}$)")
+ax_1d.set_xlabel(r"${xTitleInput}")
+ax_1d.set_ylabel(r"${zTitleInput}")`
+    : `# Cut along vertical Y at closest X ~ ${selectedPoint.x}
+target_x = ${selectedPoint.x}
+closest_x_idx = np.argmin(np.abs(X - target_x))
+actual_x = X[closest_x_idx]
+y_profile = Y
+z_profile = Z[:, closest_x_idx]
+
+ax_1d.plot(y_profile, z_profile, '-o', color='#4f46e5', markersize=4, linewidth=1.5)
+ax_1d.set_title(rf"1D Cross-Section Profile (${xAxis} = {actual_x:.4f}$)")
+ax_1d.set_xlabel(r"${yTitleInput}")
+ax_1d.set_ylabel(r"${zTitleInput}")`
+}
+
+ax_1d.tick_params(which='both', direction='out', length=5, width=1.5, colors='black', top=True, right=True)
+for spine in ax_1d.spines.values():
+    spine.set_linewidth(1.5)
+    spine.set_color('black')
+
+plt.tight_layout()
+plt.savefig("cross_section_1d.svg", format="svg", bbox_inches='tight')
+print("Successfully generated 1D cross-section figure 'cross_section_1d.svg'.")
+`
+    : "";
+
   return `# Place this script in the same folder as '${displayFilename}'
 # or replace with the full file path (e.g., r"C:\\path\\to\\${displayFilename}")
 import pandas as pd
@@ -111,7 +160,7 @@ plt.rcParams.update({
     "text.usetex": False,
     "mathtext.fontset": "cm",
     "font.family": "serif",
-    "font.serif": ["Computer Modern Roman", "Times New Roman"],
+    "font.serif": ["DejaVu Serif", "Times New Roman", "serif"],
     "font.size": 11
 })
 
@@ -149,6 +198,7 @@ plt.tight_layout()
 # 8. Save Publication SVG image
 plt.savefig("publication_figure.svg", format="svg", bbox_inches='tight')
 print("Successfully generated Matplotlib figure 'publication_figure.svg' matching NDHeat layout.")
+${lineCutSnippet}
 plt.show()
 `;
 }

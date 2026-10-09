@@ -15,6 +15,8 @@ import {
   Eye,
   EyeOff,
   Copy,
+  Activity,
+  X,
 } from "lucide-react";
 import { generatePythonCode } from "./utils/generatePythonCode";
 
@@ -146,6 +148,16 @@ export default function App() {
   const [contourLevels, setContourLevels] = useState<number>(8);
   const [showContourLabels, setShowContourLabels] = useState<boolean>(true);
 
+  // V1.2: 1D Line Cut (Cross-Section) State
+  const [cutAxis, setCutAxis] = useState<"horizontal" | "vertical">(
+    "horizontal",
+  );
+  const [selectedPoint, setSelectedPoint] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [showLineCut, setShowLineCut] = useState<boolean>(false);
+
   // CSV Ingestion Handler
   const processCSV = (file: File) => {
     Papa.parse(file, {
@@ -194,6 +206,10 @@ export default function App() {
         setXAxis(xDefault);
         setYAxis(yDefault);
         setZAxis(zDefault);
+
+        // Reset any prior selected line cuts
+        setSelectedPoint(null);
+        setShowLineCut(false);
 
         if (isDemo) {
           const initialFilters = {
@@ -516,6 +532,65 @@ export default function App() {
     };
   }, [heatmapGrid, autoScaleColor, manualZMin, manualZMax]);
 
+  // V1.2: Compute 1D Slice Profile Data based on user click
+  const lineCutProfile = useMemo(() => {
+    if (!heatmapGrid || !selectedPoint) return null;
+
+    const { x: xCoords, y: yCoords, z: zGrid } = heatmapGrid;
+
+    if (cutAxis === "horizontal") {
+      const closestYIdx = yCoords.reduce(
+        (bestIdx, curr, idx) =>
+          Math.abs(curr - selectedPoint.y) <
+          Math.abs(yCoords[bestIdx] - selectedPoint.y)
+            ? idx
+            : bestIdx,
+        0,
+      );
+      const fixedYVal = yCoords[closestYIdx];
+      const zProfile = zGrid[closestYIdx];
+
+      return {
+        cutCoordLabel: `${yAxis} = ${fixedYVal}`,
+        xData: xCoords,
+        yData: zProfile,
+        independentLabel: xTitleInput || xAxis,
+        dependentLabel: zTitleInput || zAxis,
+        fixedCoord: fixedYVal,
+      };
+    } else {
+      const closestXIdx = xCoords.reduce(
+        (bestIdx, curr, idx) =>
+          Math.abs(curr - selectedPoint.x) <
+          Math.abs(xCoords[bestIdx] - selectedPoint.x)
+            ? idx
+            : bestIdx,
+        0,
+      );
+      const fixedXVal = xCoords[closestXIdx];
+      const zProfile = yCoords.map((_, rIdx) => zGrid[rIdx][closestXIdx]);
+
+      return {
+        cutCoordLabel: `${xAxis} = ${fixedXVal}`,
+        xData: yCoords,
+        yData: zProfile,
+        independentLabel: yTitleInput || yAxis,
+        dependentLabel: zTitleInput || zAxis,
+        fixedCoord: fixedXVal,
+      };
+    }
+  }, [
+    heatmapGrid,
+    selectedPoint,
+    cutAxis,
+    xAxis,
+    yAxis,
+    zAxis,
+    xTitleInput,
+    yTitleInput,
+    zTitleInput,
+  ]);
+
   const triggerMathJaxQueue = (targetDiv?: HTMLElement) => {
     if (window.MathJax && window.MathJax.Hub) {
       try {
@@ -607,6 +682,8 @@ export default function App() {
     setZAxis("");
     setFilters({});
     setActiveFilters({});
+    setSelectedPoint(null);
+    setShowLineCut(false);
     setUploadedFileName("simulation_sweep_data.csv");
   };
 
@@ -1011,8 +1088,11 @@ export default function App() {
           <div className="bg-slate-900/35 backdrop-blur-md border border-slate-900 shadow-2xl rounded-3xl p-6 flex flex-col relative min-h-[550px] justify-between">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-900 pb-4 mb-4">
               <div>
-                <h3 className="font-bold text-slate-200 text-base">
-                  Visualization Studio
+                <h3 className="font-bold text-slate-200 text-base flex items-center space-x-2">
+                  <span>Visualization Studio</span>
+                  <span className="text-[10px] font-normal text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded-full">
+                    Click Heatmap for 1D Cross-Section
+                  </span>
                 </h3>
                 <p className="text-xs text-slate-500">
                   Interactive live scientific plotting grid
@@ -1219,6 +1299,13 @@ export default function App() {
                     }}
                     useResizeHandler={true}
                     className="w-full min-h-[480px] h-full"
+                    onClick={(eventData: any) => {
+                      if (eventData.points && eventData.points.length > 0) {
+                        const pt = eventData.points[0];
+                        setSelectedPoint({ x: pt.x, y: pt.y });
+                        setShowLineCut(true);
+                      }
+                    }}
                     onInitialized={(_, graphDiv) => {
                       graphDivRef.current = graphDiv;
                       triggerMathJaxQueue(graphDiv);
@@ -1234,6 +1321,117 @@ export default function App() {
               )}
             </div>
           </div>
+
+          {/* V1.2: 1D Cross-Section (Line Cut) Profiler Drawer */}
+          {showLineCut && lineCutProfile && (
+            <div className="bg-slate-900/55 backdrop-blur-md border border-slate-900 shadow-2xl rounded-2xl p-5 space-y-4 animate-fade-in">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
+                <div>
+                  <h4 className="text-sm font-bold text-slate-200 flex items-center space-x-2">
+                    <Activity className="w-4 h-4 text-indigo-400" />
+                    <span>1D Cross-Section Profile</span>
+                    <span className="text-xs font-mono text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded">
+                      {lineCutProfile.cutCoordLabel}
+                    </span>
+                  </h4>
+                  <p className="text-[11px] text-slate-500">
+                    Showing 1D slice response along the parameter trajectory
+                  </p>
+                </div>
+
+                <div className="flex items-center space-x-3">
+                  <div className="inline-flex rounded-lg bg-slate-950 p-0.5 border border-slate-800 text-xs">
+                    <button
+                      onClick={() => setCutAxis("horizontal")}
+                      className={`px-2.5 py-1 rounded-md font-semibold transition ${
+                        cutAxis === "horizontal"
+                          ? "bg-indigo-600 text-white shadow-sm"
+                          : "text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      Cut along X
+                    </button>
+                    <button
+                      onClick={() => setCutAxis("vertical")}
+                      className={`px-2.5 py-1 rounded-md font-semibold transition ${
+                        cutAxis === "vertical"
+                          ? "bg-indigo-600 text-white shadow-sm"
+                          : "text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      Cut along Y
+                    </button>
+                  </div>
+
+                  <button
+                    onClick={() => setShowLineCut(false)}
+                    className="p-1 rounded-lg border border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition"
+                    title="Close cross-section"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* 1D Plotly Trace */}
+              <div className="w-full h-64 bg-white rounded-xl p-3 border border-slate-200">
+                <Plot
+                  data={[
+                    {
+                      type: "scatter",
+                      mode: "lines+markers",
+                      x: lineCutProfile.xData,
+                      y: lineCutProfile.yData,
+                      line: { color: "#4f46e5", width: 2 },
+                      marker: { size: 5, color: "#312e81" },
+                    },
+                  ]}
+                  layout={{
+                    autosize: true,
+                    margin: { l: 60, r: 30, t: 25, b: 50 },
+                    xaxis: {
+                      title: {
+                        text: lineCutProfile.independentLabel,
+                        font: {
+                          family: "'Computer Modern', 'Times New Roman', serif",
+                          size: 11,
+                        },
+                      },
+                      ticks: "outside",
+                      showline: true,
+                      mirror: "allticks",
+                      linecolor: "#000000",
+                      tickfont: {
+                        family: "'Computer Modern', 'Times New Roman', serif",
+                        size: 10,
+                      },
+                    },
+                    yaxis: {
+                      title: {
+                        text: lineCutProfile.dependentLabel,
+                        font: {
+                          family: "'Computer Modern', 'Times New Roman', serif",
+                          size: 11,
+                        },
+                      },
+                      ticks: "outside",
+                      showline: true,
+                      mirror: "allticks",
+                      linecolor: "#000000",
+                      tickfont: {
+                        family: "'Computer Modern', 'Times New Roman', serif",
+                        size: 10,
+                      },
+                    },
+                    paper_bgcolor: "#ffffff",
+                    plot_bgcolor: "#ffffff",
+                  }}
+                  useResizeHandler={true}
+                  className="w-full h-full"
+                />
+              </div>
+            </div>
+          )}
 
           {/* LaTeX Annotations & Colorbar Range overrides */}
           {data && isValidMapping && (
