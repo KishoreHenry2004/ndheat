@@ -12,41 +12,78 @@ export function generatePythonCode(params: {
   colormap: string;
   smoothHeatmap: boolean;
   colorLimits: { finalZMin: number; finalZMax: number };
-  filename: string;
+  filename?: string;
+  showContours?: boolean;
+  contourLevels?: number;
+  showContourLabels?: boolean;
 }): string {
   const {
-    xAxis, yAxis, zAxis, filters, activeFilters, dimensionUniqueValues,
-    titleInput, xTitleInput, yTitleInput, zTitleInput, colormap,
-    smoothHeatmap, colorLimits, filename
+    xAxis,
+    yAxis,
+    zAxis,
+    filters,
+    activeFilters,
+    dimensionUniqueValues,
+    titleInput,
+    xTitleInput,
+    yTitleInput,
+    zTitleInput,
+    colormap,
+    smoothHeatmap,
+    colorLimits,
+    filename = "simulation_sweep_data.csv",
+    showContours = false,
+    contourLevels = 8,
+    showContourLabels = true,
   } = params;
 
-  const displayFilename = filename || 'simulation_sweep_data.csv';
+  const displayFilename = filename || "simulation_sweep_data.csv";
 
   // Map colormaps to matplotlib equivalent names
   const cmapMapping: Record<string, string> = {
-    'Viridis': 'viridis',
-    'Plasma': 'plasma',
-    'Inferno': 'inferno',
-    'Magma': 'magma',
-    'Cividis': 'cividis',
-    'Turbo': 'turbo',
-    'RdBu': 'RdBu'
+    Viridis: "viridis",
+    Plasma: "plasma",
+    Inferno: "inferno",
+    Magma: "magma",
+    Cividis: "cividis",
+    Turbo: "turbo",
+    RdBu: "RdBu",
   };
-  const pyCmap = cmapMapping[colormap] || 'viridis';
+  const pyCmap = cmapMapping[colormap] || "viridis";
 
-  // Build dynamic pandas query filters snap snaps matching epsilon tolerance
-  let pyFilters = '';
+  // Build dynamic pandas query filters matching epsilon tolerance
+  let pyFilters = "";
   Object.entries(activeFilters).forEach(([dim, isActive]) => {
     if (isActive) {
       const idx = filters[dim] ?? 0;
       const val = (dimensionUniqueValues[dim] || [])[idx];
-      if (typeof val === 'number') {
+      if (typeof val === "number") {
         pyFilters += `df = df[np.isclose(df['${dim}'], ${val}, atol=1e-6)]\n`;
       } else {
         pyFilters += `df = df[df['${dim}'] == '${val}']\n`;
       }
     }
   });
+
+  // Inject contour generation code if toggled on
+  const contourSnippet = showContours
+    ? `
+# 5b. Isolines / Contour Overlay
+levels = np.linspace(${colorLimits.finalZMin.toFixed(6)}, ${colorLimits.finalZMax.toFixed(6)}, ${contourLevels})
+contours = ax.contour(
+    X, Y, Z,
+    levels=levels,
+    colors='white',
+    linewidths=0.9,
+    alpha=0.65
+)
+${
+  showContourLabels
+    ? "ax.clabel(contours, inline=True, fontsize=8, fmt='%.2f')"
+    : "# Contour labels disabled"
+}
+`
+    : "";
 
   return `# Place this script in the same folder as '${displayFilename}'
 # or replace with the full file path (e.g., r"C:\\path\\to\\${displayFilename}")
@@ -58,7 +95,7 @@ import matplotlib.pyplot as plt
 df = pd.read_csv("${displayFilename}")
 
 # 2. Apply Dynamic Slice Filters (Epsilon Snaps)
-${pyFilters.trim() ? pyFilters.trim() : '# No active dimension filters applied'}
+${pyFilters.trim() ? pyFilters.trim() : "# No active dimension filters applied"}
 
 # 3. Pivot Coordinates to Grid Matrix (Averages duplicates if present)
 df_grid = df.groupby(['${yAxis}', '${xAxis}'])['${zAxis}'].mean().reset_index()
@@ -81,7 +118,7 @@ plt.rcParams.update({
 fig, ax = plt.subplots(figsize=(7.5, 5.8), dpi=300)
 
 # 5. Render Heatmap with pcolormesh
-shading_mode = 'gouraud' if ${smoothHeatmap ? 'True' : 'False'} else 'auto'
+shading_mode = 'gouraud' if ${smoothHeatmap ? "True" : "False"} else 'auto'
 im = ax.pcolormesh(
     X, Y, Z,
     cmap="${pyCmap}",
@@ -89,7 +126,7 @@ im = ax.pcolormesh(
     vmin=${colorLimits.finalZMin.toFixed(6)},
     vmax=${colorLimits.finalZMax.toFixed(6)}
 )
-
+${contourSnippet}
 # 6. Apply Ticks & Boundary Borders
 ax.set_aspect('auto')
 ax.tick_params(which='both', direction='out', length=5, width=1.5, colors='black', top=True, right=True)

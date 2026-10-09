@@ -1,22 +1,22 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
-import Papa from 'papaparse';
-import Plot from 'react-plotly.js';
-import Plotly from 'plotly.js-dist-min';
-import { 
-  Upload, 
-  Settings, 
-  Sliders, 
-  Download, 
-  Database, 
-  Check, 
+import React, { useState, useMemo, useEffect, useRef } from "react";
+import Papa from "papaparse";
+import Plot from "react-plotly.js";
+import Plotly from "plotly.js-dist-min";
+import {
+  Upload,
+  Settings,
+  Sliders,
+  Download,
+  Database,
+  Check,
   AlertTriangle,
   RotateCcw,
   Info,
   Eye,
   EyeOff,
-  Copy
-} from 'lucide-react';
-import { generatePythonCode } from './utils/generatePythonCode';
+  Copy,
+} from "lucide-react";
+import { generatePythonCode } from "./utils/generatePythonCode";
 
 // Declare MathJax global types for TypeScript
 declare global {
@@ -37,7 +37,10 @@ interface ParsedData {
 }
 
 // MathJax Live Typesetting Component for UI Inputs
-const MathJaxPreview: React.FC<{ text: string; className?: string }> = ({ text, className }) => {
+const MathJaxPreview: React.FC<{ text: string; className?: string }> = ({
+  text,
+  className,
+}) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -45,7 +48,11 @@ const MathJaxPreview: React.FC<{ text: string; className?: string }> = ({ text, 
       containerRef.current.innerHTML = text;
       if (window.MathJax && window.MathJax.Hub) {
         try {
-          window.MathJax.Hub.Queue(["Typeset", window.MathJax.Hub, containerRef.current]);
+          window.MathJax.Hub.Queue([
+            "Typeset",
+            window.MathJax.Hub,
+            containerRef.current,
+          ]);
         } catch (err: any) {
           console.error("MathJax typesetting failed", err);
         }
@@ -59,66 +66,61 @@ const MathJaxPreview: React.FC<{ text: string; className?: string }> = ({ text, 
 // Parameter classification helper to detect if a header is an independent parameter or dependent metric
 const isIndependentParameter = (header: string, uniqueVals: any[]) => {
   const nameLower = header.toLowerCase();
-  // Standard labels/classifiers are dependent metrics
   if (
-    nameLower.includes('phase') || 
-    nameLower.includes('state') || 
-    nameLower.includes('class') || 
-    nameLower.includes('status') || 
-    nameLower.includes('label')
+    nameLower.includes("phase") ||
+    nameLower.includes("state") ||
+    nameLower.includes("class") ||
+    nameLower.includes("status") ||
+    nameLower.includes("label")
   ) {
     return false;
   }
-  // Categorical string columns are dependent labels/classifiers
-  const allNumeric = uniqueVals.every(v => typeof v === 'number' && !isNaN(v));
+  const allNumeric = uniqueVals.every(
+    (v) => typeof v === "number" && !isNaN(v),
+  );
   if (!allNumeric) {
     return false;
   }
-  // Sliced sweep parameters rarely have a dense resolution (>15 unique values).
-  // Dense numeric coordinates are treated as continuous outputs/metrics.
   if (uniqueVals.length > 15) {
     return false;
   }
   return true;
 };
 
-// Clean header formatting function to prevent double backslashes
 const formatLabel = (name: string) => {
-  if (!name) return '';
-  if (name.includes('$')) return name;
+  if (!name) return "";
+  if (name.includes("$")) return name;
   return name
-    .replace(/_/g, ' ')
-    .split(' ')
-    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ');
+    .replace(/_/g, " ")
+    .split(" ")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
 };
 
 export default function App() {
   const [data, setData] = useState<ParsedData | null>(null);
-  const [xAxis, setXAxis] = useState<string>('');
-  const [yAxis, setYAxis] = useState<string>('');
-  const [zAxis, setZAxis] = useState<string>('');
-  const [colormap, setColormap] = useState<string>('Viridis');
+  const [xAxis, setXAxis] = useState<string>("driving_freq");
+  const [yAxis, setYAxis] = useState<string>("coupling_const");
+  const [zAxis, setZAxis] = useState<string>("lyapunov_val");
+  const [colormap, setColormap] = useState<string>("Viridis");
   const [smoothHeatmap, setSmoothHeatmap] = useState<boolean>(false);
   const [isDragging, setIsDragging] = useState<boolean>(false);
 
   // LaTeX inputs
-  const [titleInput, setTitleInput] = useState<string>('');
-  const [xTitleInput, setXTitleInput] = useState<string>('');
-  const [yTitleInput, setYTitleInput] = useState<string>('');
-  const [zTitleInput, setZTitleInput] = useState<string>('');
+  const [titleInput, setTitleInput] = useState<string>("");
+  const [xTitleInput, setXTitleInput] = useState<string>("");
+  const [yTitleInput, setYTitleInput] = useState<string>("");
+  const [zTitleInput, setZTitleInput] = useState<string>("");
 
-  // Track manual edits of LaTeX annotation inputs to prevent slider updates overwriting custom text
   const [isTitleEdited, setIsTitleEdited] = useState<boolean>(false);
   const [isXTitleEdited, setIsXTitleEdited] = useState<boolean>(false);
   const [isYTitleEdited, setIsYTitleEdited] = useState<boolean>(false);
   const [isZTitleEdited, setIsZTitleEdited] = useState<boolean>(false);
 
-  // Clipboard copy status feedback
   const [copiedPython, setCopiedPython] = useState<boolean>(false);
-
-  // Track custom uploaded file name for the Python Matplotlib code generator script
-  const [uploadedFileName, setUploadedFileName] = useState<string>('simulation_sweep_data.csv');
+  const [uploadedFileName, setUploadedFileName] = useState<string>(
+    "simulation_sweep_data.csv",
+  );
 
   // Color scaling settings
   const [autoScaleColor, setAutoScaleColor] = useState<boolean>(false);
@@ -130,13 +132,19 @@ export default function App() {
   const [exportHeight, setExportHeight] = useState<number>(600);
   const [isExporting, setIsExporting] = useState<boolean>(false);
 
-  // Slice filters: mapping column -> selected index
+  // Filters
   const [filters, setFilters] = useState<Record<string, number>>({});
-  // Slicing active states: mapping column -> boolean (true = filter active, false = All bypassed)
-  const [activeFilters, setActiveFilters] = useState<Record<string, boolean>>({});
+  const [activeFilters, setActiveFilters] = useState<Record<string, boolean>>(
+    {},
+  );
 
   // Plotly Div element reference
   const graphDivRef = useRef<any>(null);
+
+  // Contour Overlay States
+  const [showContours, setShowContours] = useState<boolean>(false);
+  const [contourLevels, setContourLevels] = useState<number>(8);
+  const [showContourLabels, setShowContourLabels] = useState<boolean>(true);
 
   // CSV Ingestion Handler
   const processCSV = (file: File) => {
@@ -149,26 +157,39 @@ export default function App() {
         const rows = results.data as Record<string, any>[];
 
         if (headers.length < 3) {
-          alert("CSV requires at least 3 columns for X, Y, and color (Z) mapping.");
+          alert(
+            "CSV requires at least 3 columns for X, Y, and color (Z) mapping.",
+          );
           return;
         }
 
-        // Detect if uploaded file is the synthetic demo sweep
-        const isDemo = file.name.includes('synthetic_physics') || headers.includes('driving_freq');
+        const isDemo =
+          file.name.includes("synthetic_physics") ||
+          headers.includes("driving_freq");
 
         setData({
           headers,
           rows,
           filename: file.name,
-          isDemo
+          isDemo,
         });
 
         setUploadedFileName(file.name);
 
-        // Set logical defaults
-        const xDefault = headers.find(h => h.toLowerCase().includes('freq') || h.toLowerCase() === 'x') || headers[0];
-        const yDefault = headers.find(h => h.toLowerCase().includes('coupling') || h.toLowerCase() === 'y') || headers[1];
-        const zDefault = headers.find(h => h.toLowerCase().includes('lyapunov') || h.toLowerCase() === 'z') || headers[headers.length - 1];
+        const xDefault =
+          headers.find(
+            (h) => h.toLowerCase().includes("freq") || h.toLowerCase() === "x",
+          ) || headers[0];
+        const yDefault =
+          headers.find(
+            (h) =>
+              h.toLowerCase().includes("coupling") || h.toLowerCase() === "y",
+          ) || headers[1];
+        const zDefault =
+          headers.find(
+            (h) =>
+              h.toLowerCase().includes("lyapunov") || h.toLowerCase() === "z",
+          ) || headers[headers.length - 1];
 
         setXAxis(xDefault);
         setYAxis(yDefault);
@@ -176,14 +197,14 @@ export default function App() {
 
         if (isDemo) {
           const initialFilters = {
-            damping_gamma: 1, // index corresponding to 0.1
-            noise_level: 0,   // index corresponding to 0.0
-            phase_state: 0
+            damping_gamma: 1,
+            noise_level: 0,
+            phase_state: 0,
           };
           const initialActive = {
             damping_gamma: true,
             noise_level: true,
-            phase_state: false // "All / No Filter" by default
+            phase_state: false,
           };
           setFilters(initialFilters);
           setActiveFilters(initialActive);
@@ -193,12 +214,12 @@ export default function App() {
         } else {
           setFilters({});
           setActiveFilters({});
-          setAutoScaleColor(true); // Default to auto-scale on custom file upload
+          setAutoScaleColor(true);
         }
       },
       error: (err) => {
         alert("Error parsing CSV: " + err.message);
-      }
+      },
     });
   };
 
@@ -227,31 +248,36 @@ export default function App() {
     }
   };
 
-  // Determine non-selected dimensions for slicing
   const extraDimensions = useMemo(() => {
     if (!data) return [];
-    return data.headers.filter(h => h !== xAxis && h !== yAxis && h !== zAxis);
+    return data.headers.filter(
+      (h) => h !== xAxis && h !== yAxis && h !== zAxis,
+    );
   }, [data, xAxis, yAxis, zAxis]);
 
-  // Compute unique values for ALL dimensions from the full dataset (to ensure stable axes / steps)
   const dimensionUniqueValues = useMemo(() => {
     if (!data) return {};
     const valuesMap: Record<string, any[]> = {};
-    data.headers.forEach(header => {
-      const vals = data.rows.map(r => r[header]).filter(v => v !== undefined && v !== null);
+    data.headers.forEach((header) => {
+      const vals = data.rows
+        .map((r) => r[header])
+        .filter((v) => v !== undefined && v !== null);
       const unique = Array.from(new Set(vals));
-      
-      const isNumeric = unique.every(v => typeof v === 'number' || !isNaN(Number(v)));
+
+      const isNumeric = unique.every(
+        (v) => typeof v === "number" || !isNaN(Number(v)),
+      );
       if (isNumeric) {
         valuesMap[header] = unique.map(Number).sort((a, b) => a - b);
       } else {
-        valuesMap[header] = unique.map(String).sort((a, b) => a.localeCompare(b));
+        valuesMap[header] = unique
+          .map(String)
+          .sort((a, b) => a.localeCompare(b));
       }
     });
     return valuesMap;
   }, [data]);
 
-  // Reset editing flags whenever the mapped axis variables or dataset changes
   useEffect(() => {
     if (!xAxis || !yAxis || !zAxis) return;
     setIsTitleEdited(false);
@@ -260,21 +286,19 @@ export default function App() {
     setIsZTitleEdited(false);
   }, [xAxis, yAxis, zAxis, data]);
 
-  // Handle setting/resetting filters when extra dimensions change (for both custom and demo files)
   useEffect(() => {
     if (!data) return;
     const initialFilters: Record<string, number> = {};
     const initialActive: Record<string, boolean> = {};
-    
-    extraDimensions.forEach(dim => {
+
+    extraDimensions.forEach((dim) => {
       const uniqueVals = dimensionUniqueValues[dim] || [];
-      
       let defaultIdx = 0;
       if (data.isDemo) {
-        if (dim === 'damping_gamma') {
+        if (dim === "damping_gamma") {
           const idx = uniqueVals.indexOf(0.1);
           defaultIdx = idx !== -1 ? idx : 1;
-        } else if (dim === 'noise_level') {
+        } else if (dim === "noise_level") {
           const idx = uniqueVals.indexOf(0.0);
           defaultIdx = idx !== -1 ? idx : 0;
         } else {
@@ -284,8 +308,6 @@ export default function App() {
         defaultIdx = Math.floor(uniqueVals.length / 2);
       }
       initialFilters[dim] = Math.max(0, defaultIdx);
-      
-      // Classify if it's an independent parameter to decide default active status
       initialActive[dim] = isIndependentParameter(dim, uniqueVals);
     });
 
@@ -293,56 +315,58 @@ export default function App() {
     setActiveFilters(initialActive);
   }, [data, extraDimensions, dimensionUniqueValues]);
 
-  // Validate mapping choice
   const isValidMapping = useMemo(() => {
     if (!xAxis || !yAxis || !zAxis) return false;
     return xAxis !== yAxis && xAxis !== zAxis && yAxis !== zAxis;
   }, [xAxis, yAxis, zAxis]);
 
-  // Synchronize dynamic LaTeX title based on slice states & axes names, preserving manual edits
   useEffect(() => {
     if (!xAxis || !yAxis || !zAxis || !data) return;
-    
+
     if (data.isDemo) {
-      const gammaIdx = filters['damping_gamma'] ?? 1;
-      const gammaVals = dimensionUniqueValues['damping_gamma'] || [0.1];
+      const gammaIdx = filters["damping_gamma"] ?? 1;
+      const gammaVals = dimensionUniqueValues["damping_gamma"] || [0.1];
       const gammaVal = gammaVals[gammaIdx] ?? 0.1;
 
-      const sigmaIdx = filters['noise_level'] ?? 0;
-      const sigmaVals = dimensionUniqueValues['noise_level'] || [0.0];
+      const sigmaIdx = filters["noise_level"] ?? 0;
+      const sigmaVals = dimensionUniqueValues["noise_level"] || [0.0];
       const sigmaVal = sigmaVals[sigmaIdx] ?? 0.0;
 
-      // Dynamic slices formatted cleanly in native single-block LaTeX notation matching user requests
-      const gammaStr = activeFilters['damping_gamma'] ? `\\gamma = ${gammaVal}` : '\\text{All } \\gamma';
-      const sigmaStr = activeFilters['noise_level'] ? `\\sigma = ${sigmaVal}` : '\\text{All } \\sigma';
-      
+      const gammaStr = activeFilters["damping_gamma"]
+        ? `\\gamma = ${gammaVal}`
+        : "\\text{All } \\gamma";
+      const sigmaStr = activeFilters["noise_level"]
+        ? `\\sigma = ${sigmaVal}`
+        : "\\text{All } \\sigma";
+
       if (!isTitleEdited) {
         setTitleInput(`$\\text{Slice: } ${gammaStr}, \\;${sigmaStr}$`);
       }
       if (!isXTitleEdited) {
-        setXTitleInput('$\\text{Driving Frequency } \\omega/\\omega_0$');
+        setXTitleInput("$\\text{Driving Frequency } \\omega/\\omega_0$");
       }
       if (!isYTitleEdited) {
-        setYTitleInput('$\\text{Coupling Constant } g/\\hbar$');
+        setYTitleInput("$\\text{Coupling Constant } g/\\hbar$");
       }
       if (!isZTitleEdited) {
-        setZTitleInput('$\\text{Max Lyapunov Exponent } \\lambda_{\\max}$');
+        setZTitleInput("$\\text{Max Lyapunov Exponent } \\lambda_{\\max}$");
       }
     } else {
-      // Custom dataset default titles: clean text labels inside a single LaTeX block
       const activeSlices = extraDimensions
-        .filter(dim => activeFilters[dim])
-        .map(dim => {
+        .filter((dim) => activeFilters[dim])
+        .map((dim) => {
           const idx = filters[dim] ?? 0;
           const val = (dimensionUniqueValues[dim] || [])[idx];
           return `\\text{${formatLabel(dim)}} = ${val}`;
         });
-      
+
       if (!isTitleEdited) {
         if (activeSlices.length > 0) {
-          setTitleInput(`$\\text{Slice: } ${activeSlices.join(', \\;')}$`);
+          setTitleInput(`$\\text{Slice: } ${activeSlices.join(", \\;")}$`);
         } else {
-          setTitleInput(`$\\text{${formatLabel(zAxis)}} \\text{ vs } (\\text{${formatLabel(xAxis)}}, \\text{${formatLabel(yAxis)}})$`);
+          setTitleInput(
+            `$\\text{${formatLabel(zAxis)}} \\text{ vs } (\\text{${formatLabel(xAxis)}}, \\text{${formatLabel(yAxis)}})$`,
+          );
         }
       }
       if (!isXTitleEdited) {
@@ -356,18 +380,27 @@ export default function App() {
       }
     }
   }, [
-    xAxis, yAxis, zAxis, filters, activeFilters, dimensionUniqueValues, data, 
-    extraDimensions, isTitleEdited, isXTitleEdited, isYTitleEdited, isZTitleEdited
+    xAxis,
+    yAxis,
+    zAxis,
+    filters,
+    activeFilters,
+    dimensionUniqueValues,
+    data,
+    extraDimensions,
+    isTitleEdited,
+    isXTitleEdited,
+    isYTitleEdited,
+    isZTitleEdited,
   ]);
 
-  // Filter rows using index-based snapping and $10^{-6}$ epsilon tolerance for numeric slices
   const filteredRows = useMemo(() => {
     if (!data || !isValidMapping) return [];
 
-    return data.rows.filter(row => {
-      return extraDimensions.every(dim => {
+    return data.rows.filter((row) => {
+      return extraDimensions.every((dim) => {
         const isActive = activeFilters[dim];
-        if (!isActive) return true; // Bypass this filter ("All / No Filter" state)
+        if (!isActive) return true;
 
         const selectedIdx = filters[dim] ?? 0;
         const uniqueVals = dimensionUniqueValues[dim] || [];
@@ -377,15 +410,21 @@ export default function App() {
 
         const rowVal = row[dim];
 
-        if (typeof targetVal === 'number' && typeof rowVal === 'number') {
+        if (typeof targetVal === "number" && typeof rowVal === "number") {
           return Math.abs(rowVal - targetVal) < 1e-6;
         }
         return String(rowVal) === String(targetVal);
       });
     });
-  }, [data, isValidMapping, extraDimensions, filters, activeFilters, dimensionUniqueValues]);
+  }, [
+    data,
+    isValidMapping,
+    extraDimensions,
+    filters,
+    activeFilters,
+    dimensionUniqueValues,
+  ]);
 
-  // Generate 2D Matrix (Pivot Grid)
   const heatmapGrid = useMemo(() => {
     if (!data || !isValidMapping) return null;
 
@@ -394,28 +433,27 @@ export default function App() {
 
     if (xCoords.length === 0 || yCoords.length === 0) return null;
 
-    // Initialize 2D grid matrix of size [Y.length][X.length] filled with null or accumulation lists
-    const grid: any[][] = Array.from({ length: yCoords.length }, () => 
-      Array.from({ length: xCoords.length }, () => null)
+    const grid: any[][] = Array.from({ length: yCoords.length }, () =>
+      Array.from({ length: xCoords.length }, () => null),
     );
 
-    // Group and accumulate matching rows for averaging (handles duplicates or slightly offsets)
-    filteredRows.forEach(row => {
+    filteredRows.forEach((row) => {
       const rowX = row[xAxis];
       const rowY = row[yAxis];
       const rowZ = row[zAxis];
 
-      if (rowX === undefined || rowY === undefined || rowZ === undefined) return;
+      if (rowX === undefined || rowY === undefined || rowZ === undefined)
+        return;
 
-      const xIdx = xCoords.findIndex(val => {
-        if (typeof val === 'number' && typeof rowX === 'number') {
+      const xIdx = xCoords.findIndex((val) => {
+        if (typeof val === "number" && typeof rowX === "number") {
           return Math.abs(val - rowX) < 1e-6;
         }
         return String(val) === String(rowX);
       });
 
-      const yIdx = yCoords.findIndex(val => {
-        if (typeof val === 'number' && typeof rowY === 'number') {
+      const yIdx = yCoords.findIndex((val) => {
+        if (typeof val === "number" && typeof rowY === "number") {
           return Math.abs(val - rowY) < 1e-6;
         }
         return String(val) === String(rowY);
@@ -429,29 +467,40 @@ export default function App() {
       }
     });
 
-    // Compute average for each grid coordinate
-    const finalZ = grid.map(yRow => 
-      yRow.map(cell => {
+    const finalZ = grid.map((yRow) =>
+      yRow.map((cell) => {
         if (cell === null) return null;
         const validNumbers = cell.filter((v: any) => !isNaN(v));
         if (validNumbers.length === 0) return null;
-        return validNumbers.reduce((a: number, b: number) => a + b, 0) / validNumbers.length;
-      })
+        return (
+          validNumbers.reduce((a: number, b: number) => a + b, 0) /
+          validNumbers.length
+        );
+      }),
     );
 
     return {
       x: xCoords,
       y: yCoords,
-      z: finalZ
+      z: finalZ,
     };
-  }, [data, isValidMapping, xAxis, yAxis, zAxis, filteredRows, dimensionUniqueValues]);
+  }, [
+    data,
+    isValidMapping,
+    xAxis,
+    yAxis,
+    zAxis,
+    filteredRows,
+    dimensionUniqueValues,
+  ]);
 
-  // Compute color range zmin & zmax dynamically from the current sliced Z matrix
   const colorLimits = useMemo(() => {
-    if (!heatmapGrid || !heatmapGrid.z) return { finalZMin: -0.9, finalZMax: 0.9 };
-    
-    // Flat map values and filter out nulls/NaNs
-    const zVals = heatmapGrid.z.flat().filter((v): v is number => v !== null && !isNaN(v));
+    if (!heatmapGrid || !heatmapGrid.z)
+      return { finalZMin: -0.9, finalZMax: 0.9 };
+
+    const zVals = heatmapGrid.z
+      .flat()
+      .filter((v): v is number => v !== null && !isNaN(v));
     if (zVals.length === 0) return { finalZMin: -0.9, finalZMax: 0.9 };
 
     const minVal = Math.min(...zVals);
@@ -463,51 +512,61 @@ export default function App() {
 
     return {
       finalZMin: activeZMin,
-      finalZMax: finalZMax
+      finalZMax: finalZMax,
     };
   }, [heatmapGrid, autoScaleColor, manualZMin, manualZMax]);
 
-  // Queue MathJax typesetting on every update or layout change to parse raw LaTeX strings in Plotly SVG text
   const triggerMathJaxQueue = (targetDiv?: HTMLElement) => {
     if (window.MathJax && window.MathJax.Hub) {
       try {
-        window.MathJax.Hub.Queue(["Typeset", window.MathJax.Hub, targetDiv || graphDivRef.current]);
+        window.MathJax.Hub.Queue([
+          "Typeset",
+          window.MathJax.Hub,
+          targetDiv || graphDivRef.current,
+        ]);
       } catch (err: any) {
         console.error("MathJax update queue failed", err);
       }
     }
   };
 
-  // Re-run MathJax when dependencies change to ensure labels compile after state renders
   useEffect(() => {
     const timer = setTimeout(() => {
       triggerMathJaxQueue();
     }, 150);
     return () => clearTimeout(timer);
-  }, [heatmapGrid, titleInput, xTitleInput, yTitleInput, zTitleInput, colormap, smoothHeatmap, colorLimits]);
+  }, [
+    heatmapGrid,
+    titleInput,
+    xTitleInput,
+    yTitleInput,
+    zTitleInput,
+    colormap,
+    smoothHeatmap,
+    colorLimits,
+  ]);
 
-  // Handle Export of Vector SVG
   const handleExportSVG = () => {
     if (!graphDivRef.current) return;
     setIsExporting(true);
 
-    // Briefly delay to trigger export animation styling
     setTimeout(() => {
       Plotly.downloadImage(graphDivRef.current, {
-        format: 'svg',
+        format: "svg",
         width: exportWidth,
         height: exportHeight,
-        filename: data?.filename ? `${data.filename.split('.')[0]}_heatmap` : 'ndheat_publication_plot',
+        filename: data?.filename
+          ? `${data.filename.split(".")[0]}_heatmap`
+          : "ndheat_publication_plot",
       })
-      .then(() => setIsExporting(false))
-      .catch((err: any) => {
-        console.error("Export failed", err);
-        setIsExporting(false);
-      });
+        .then(() => setIsExporting(false))
+        .catch((err: any) => {
+          console.error("Export failed", err);
+          setIsExporting(false);
+        });
     }, 300);
   };
 
-  // Copy reproducible Matplotlib Python script matching current sliced parameters
   const handleCopyPythonCode = () => {
     if (!data) return;
     const pythonCode = generatePythonCode({
@@ -524,10 +583,14 @@ export default function App() {
       colormap,
       smoothHeatmap,
       colorLimits,
-      filename: uploadedFileName
+      filename: uploadedFileName,
+      showContours,
+      contourLevels,
+      showContourLabels,
     });
 
-    navigator.clipboard.writeText(pythonCode)
+    navigator.clipboard
+      .writeText(pythonCode)
       .then(() => {
         setCopiedPython(true);
         setTimeout(() => setCopiedPython(false), 2000);
@@ -539,22 +602,20 @@ export default function App() {
 
   const handleResetData = () => {
     setData(null);
-    setXAxis('');
-    setYAxis('');
-    setZAxis('');
+    setXAxis("");
+    setYAxis("");
+    setZAxis("");
     setFilters({});
     setActiveFilters({});
-    setUploadedFileName('simulation_sweep_data.csv');
+    setUploadedFileName("simulation_sweep_data.csv");
   };
 
   return (
     <div className="min-h-screen bg-slate-950 font-sans text-slate-100 flex flex-col selection:bg-indigo-500/30 selection:text-indigo-200">
-      
-      {/* Decorative Neon Background Blurs */}
       <div className="fixed top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-indigo-500/10 blur-[120px] pointer-events-none" />
       <div className="fixed bottom-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full bg-cyan-500/10 blur-[120px] pointer-events-none" />
 
-      {/* Premium Header */}
+      {/* Header */}
       <header className="sticky top-0 z-50 backdrop-blur-md bg-slate-950/70 border-b border-slate-900/80 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-indigo-500/20 font-black text-xl text-white tracking-wider">
@@ -564,24 +625,25 @@ export default function App() {
             <h1 className="text-xl font-bold tracking-tight bg-gradient-to-r from-indigo-100 via-slate-100 to-cyan-200 bg-clip-text text-transparent">
               NDHeat
             </h1>
-            <p className="text-xs text-slate-500 font-medium">N-Dimensional Physics Sweep Visualizer</p>
+            <p className="text-xs text-slate-500 font-medium">
+              N-Dimensional Physics Sweep Visualizer
+            </p>
           </div>
         </div>
 
         <div className="flex items-center space-x-4">
-          {/* Header-integrated Bilinear Smoothing Toggle Switch */}
           {data && isValidMapping && (
             <div className="flex items-center space-x-2 bg-slate-900/50 border border-slate-800/80 px-3 py-1.5 rounded-lg text-xs font-semibold">
               <span className="text-slate-400">Bilinear Smoothing</span>
               <button
                 onClick={() => setSmoothHeatmap(!smoothHeatmap)}
                 className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                  smoothHeatmap ? 'bg-indigo-650' : 'bg-slate-800'
+                  smoothHeatmap ? "bg-indigo-600" : "bg-slate-800"
                 }`}
               >
                 <span
                   className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-slate-100 shadow-lg ring-0 transition duration-200 ease-in-out ${
-                    smoothHeatmap ? 'translate-x-4' : 'translate-x-0'
+                    smoothHeatmap ? "translate-x-4" : "translate-x-0"
                   }`}
                 />
               </button>
@@ -592,9 +654,13 @@ export default function App() {
             <>
               <div className="hidden md:flex items-center space-x-2 bg-slate-900/60 border border-slate-800/80 px-3 py-1 rounded-lg text-xs font-mono">
                 <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
-                <span className="text-slate-400 max-w-[150px] truncate">{data.filename}</span>
+                <span className="text-slate-400 max-w-[150px] truncate">
+                  {data.filename}
+                </span>
                 <span className="text-slate-600">|</span>
-                <span className="text-slate-300 font-semibold">{data.rows.length.toLocaleString()} rows</span>
+                <span className="text-slate-300 font-semibold">
+                  {data.rows.length.toLocaleString()} rows
+                </span>
               </div>
               <button
                 onClick={handleResetData}
@@ -614,13 +680,11 @@ export default function App() {
 
       {/* Main Grid Workspace */}
       <main className="flex-1 p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 relative z-10 max-w-[1600px] mx-auto w-full">
-        
-        {/* LEFT SIDEBAR: Ingestion & Control Dashboard */}
+        {/* LEFT SIDEBAR */}
         <section className="lg:col-span-4 space-y-6 flex flex-col">
-          
           {/* Card 1: Data Ingestor */}
           <div className="bg-slate-900/55 backdrop-blur-md border border-slate-900 shadow-2xl rounded-2xl p-5 space-y-4">
-            <h2 className="text-sm font-semibold tracking-wide text-slate-330 uppercase flex items-center space-x-2">
+            <h2 className="text-sm font-semibold tracking-wide text-slate-300 uppercase flex items-center space-x-2">
               <Database className="w-4 h-4 text-indigo-400" />
               <span>File Ingestion</span>
             </h2>
@@ -633,8 +697,8 @@ export default function App() {
                   onDrop={handleDrop}
                   className={`border-2 border-dashed rounded-xl p-8 text-center flex flex-col items-center justify-center cursor-pointer transition-all duration-300 ${
                     isDragging
-                      ? 'border-indigo-400 bg-indigo-500/10 shadow-inner'
-                      : 'border-slate-800 hover:border-slate-700 bg-slate-950/40 hover:bg-slate-950/60'
+                      ? "border-indigo-400 bg-indigo-500/10 shadow-inner"
+                      : "border-slate-800 hover:border-slate-700 bg-slate-950/40 hover:bg-slate-950/60"
                   }`}
                 >
                   <input
@@ -644,10 +708,17 @@ export default function App() {
                     className="hidden"
                     onChange={handleFileChange}
                   />
-                  <label htmlFor="csv-file-upload" className="cursor-pointer flex flex-col items-center justify-center">
+                  <label
+                    htmlFor="csv-file-upload"
+                    className="cursor-pointer flex flex-col items-center justify-center"
+                  >
                     <Upload className="w-10 h-10 text-slate-500 mb-3 animate-bounce" />
-                    <span className="text-sm font-semibold text-slate-300">Drag & drop CSV file</span>
-                    <span className="text-xs text-slate-500 mt-1">or click to browse local directory</span>
+                    <span className="text-sm font-semibold text-slate-300">
+                      Drag & drop CSV file
+                    </span>
+                    <span className="text-xs text-slate-500 mt-1">
+                      or click to browse local directory
+                    </span>
                   </label>
                 </div>
               </div>
@@ -657,7 +728,10 @@ export default function App() {
                 <div>
                   <p className="font-semibold">Dataset Active</p>
                   <p className="text-xs text-slate-400 mt-0.5 font-mono">
-                    Loaded {data.isDemo ? 'Synthetic Physics Sweep (50x50)' : 'Custom CSV'}
+                    Loaded{" "}
+                    {data.isDemo
+                      ? "Synthetic Physics Sweep (50x50)"
+                      : "Custom CSV"}
                   </p>
                 </div>
               </div>
@@ -667,7 +741,6 @@ export default function App() {
           {/* Card 2: Mapping Configurations */}
           {data && (
             <>
-              {/* Axis Mapping Panel */}
               <div className="bg-slate-900/55 backdrop-blur-md border border-slate-900 shadow-2xl rounded-2xl p-5 space-y-4">
                 <h2 className="text-sm font-semibold tracking-wide text-slate-300 uppercase flex items-center space-x-2">
                   <Settings className="w-4 h-4 text-indigo-400" />
@@ -680,11 +753,15 @@ export default function App() {
                       X Axis (Horizontal Grid)
                     </label>
                     <select
-                      className="w-full bg-slate-950/70 border border-slate-850 hover:border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition font-mono"
+                      className="w-full bg-slate-950/70 border border-slate-800 hover:border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition font-mono"
                       value={xAxis}
                       onChange={(e) => setXAxis(e.target.value)}
                     >
-                      {data.headers.map(h => <option key={h} value={h}>{h}</option>)}
+                      {data.headers.map((h) => (
+                        <option key={h} value={h}>
+                          {h}
+                        </option>
+                      ))}
                     </select>
                   </div>
 
@@ -693,11 +770,15 @@ export default function App() {
                       Y Axis (Vertical Grid)
                     </label>
                     <select
-                      className="w-full bg-slate-950/70 border border-slate-850 hover:border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition font-mono"
+                      className="w-full bg-slate-950/70 border border-slate-800 hover:border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition font-mono"
                       value={yAxis}
                       onChange={(e) => setYAxis(e.target.value)}
                     >
-                      {data.headers.map(h => <option key={h} value={h}>{h}</option>)}
+                      {data.headers.map((h) => (
+                        <option key={h} value={h}>
+                          {h}
+                        </option>
+                      ))}
                     </select>
                   </div>
 
@@ -706,11 +787,15 @@ export default function App() {
                       Z Axis (Heatmap Color Intensity)
                     </label>
                     <select
-                      className="w-full bg-slate-950/70 border border-slate-850 hover:border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition font-mono"
+                      className="w-full bg-slate-950/70 border border-slate-800 hover:border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition font-mono"
                       value={zAxis}
                       onChange={(e) => setZAxis(e.target.value)}
                     >
-                      {data.headers.map(h => <option key={h} value={h}>{h}</option>)}
+                      {data.headers.map((h) => (
+                        <option key={h} value={h}>
+                          {h}
+                        </option>
+                      ))}
                     </select>
                   </div>
                 </div>
@@ -719,16 +804,75 @@ export default function App() {
                   <div className="flex items-start space-x-2 p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-xl text-xs mt-2">
                     <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
                     <span>
-                      <strong>Mapping Conflict:</strong> Ensure X, Y, and Z mapping columns are unique to compute the grid correctly.
+                      <strong>Mapping Conflict:</strong> Ensure X, Y, and Z
+                      mapping columns are unique to compute the grid correctly.
                     </span>
                   </div>
                 )}
               </div>
 
-              {/* Dynamic Slicing Panel with Explicit "All" Toggles */}
+              {/* CONTOUR OVERLAY SETTINGS */}
+              <div className="bg-slate-900/55 backdrop-blur-md border border-slate-900 shadow-2xl rounded-2xl p-5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <label
+                    htmlFor="toggle-contours"
+                    className="text-sm font-semibold text-slate-200 cursor-pointer"
+                  >
+                    Overlay Contours
+                  </label>
+                  <input
+                    id="toggle-contours"
+                    type="checkbox"
+                    checked={showContours}
+                    onChange={(e) => setShowContours(e.target.checked)}
+                    className="w-4 h-4 rounded text-blue-600 bg-slate-800 border-slate-700 cursor-pointer focus:ring-blue-500"
+                  />
+                </div>
+
+                {showContours && (
+                  <div className="space-y-3 pt-3 border-t border-slate-800/80">
+                    <div>
+                      <div className="flex justify-between text-xs text-slate-400 mb-1">
+                        <span>Contour Levels</span>
+                        <span className="font-mono text-slate-200">
+                          {contourLevels}
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min="3"
+                        max="20"
+                        value={contourLevels}
+                        onChange={(e) =>
+                          setContourLevels(Number(e.target.value))
+                        }
+                        className="w-full accent-indigo-500 cursor-pointer"
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <label
+                        htmlFor="toggle-labels"
+                        className="text-xs text-slate-400 cursor-pointer"
+                      >
+                        Inline Value Labels
+                      </label>
+                      <input
+                        id="toggle-labels"
+                        type="checkbox"
+                        checked={showContourLabels}
+                        onChange={(e) => setShowContourLabels(e.target.checked)}
+                        className="w-3.5 h-3.5 rounded text-indigo-500 bg-slate-800 border-slate-700 cursor-pointer"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Dynamic Slicing Panel */}
               <div className="bg-slate-900/55 backdrop-blur-md border border-slate-900 shadow-2xl rounded-2xl p-5 space-y-4 flex-1">
-                <div className="flex items-center justify-between border-b border-slate-850 pb-3">
-                  <h2 className="text-sm font-semibold tracking-wide text-slate-350 uppercase flex items-center space-x-2">
+                <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+                  <h2 className="text-sm font-semibold tracking-wide text-slate-300 uppercase flex items-center space-x-2">
                     <Sliders className="w-4 h-4 text-amber-400" />
                     <span>Dynamic Slicing</span>
                   </h2>
@@ -738,45 +882,60 @@ export default function App() {
                 </div>
 
                 {extraDimensions.length === 0 ? (
-                  <div className="h-28 flex flex-col items-center justify-center text-center p-4 border border-dashed border-slate-850 rounded-xl text-slate-500">
-                    <Info className="w-5 h-5 mb-1.5 text-slate-655" />
-                    <p className="text-xs">No additional dimensions found. Plotting full 2D space.</p>
+                  <div className="h-28 flex flex-col items-center justify-center text-center p-4 border border-dashed border-slate-800 rounded-xl text-slate-500">
+                    <Info className="w-5 h-5 mb-1.5 text-slate-600" />
+                    <p className="text-xs">
+                      No additional dimensions found. Plotting full 2D space.
+                    </p>
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {extraDimensions.map(dim => {
+                    {extraDimensions.map((dim) => {
                       const uniqueVals = dimensionUniqueValues[dim] || [];
                       const selectedIdx = filters[dim] ?? 0;
                       const currentVal = uniqueVals[selectedIdx];
                       const isFilterActive = activeFilters[dim] ?? false;
 
                       return (
-                        <div key={dim} className="space-y-2 bg-slate-950/30 border border-slate-900/50 p-3 rounded-xl transition-all duration-200">
+                        <div
+                          key={dim}
+                          className="space-y-2 bg-slate-950/30 border border-slate-900/50 p-3 rounded-xl transition-all duration-200"
+                        >
                           <div className="flex items-center justify-between">
                             <div className="flex items-center space-x-2">
                               <button
-                                onClick={() => setActiveFilters(prev => ({ ...prev, [dim]: !isFilterActive }))}
+                                onClick={() =>
+                                  setActiveFilters((prev) => ({
+                                    ...prev,
+                                    [dim]: !isFilterActive,
+                                  }))
+                                }
                                 className={`flex items-center space-x-1 text-xs font-semibold px-2 py-0.5 rounded-md transition ${
-                                  isFilterActive 
-                                    ? 'bg-indigo-650/40 text-indigo-300 border border-indigo-500/20' 
-                                    : 'bg-slate-800/80 text-slate-400 border border-slate-700/60'
+                                  isFilterActive
+                                    ? "bg-indigo-600/30 text-indigo-300 border border-indigo-500/30"
+                                    : "bg-slate-800/80 text-slate-400 border border-slate-700/60"
                                 }`}
                               >
-                                {isFilterActive ? <Eye className="w-3 h-3 text-indigo-400" /> : <EyeOff className="w-3 h-3 text-slate-500" />}
+                                {isFilterActive ? (
+                                  <Eye className="w-3 h-3 text-indigo-400" />
+                                ) : (
+                                  <EyeOff className="w-3 h-3 text-slate-500" />
+                                )}
                                 <span className="font-mono">{dim}</span>
                               </button>
                             </div>
                             <span className="text-xs font-mono text-slate-300 font-semibold bg-slate-900 px-2 py-0.5 rounded border border-slate-800/80">
-                              {isFilterActive ? currentVal : 'All / No Filter'}
+                              {isFilterActive ? currentVal : "All / No Filter"}
                             </span>
                           </div>
 
-                          {/* Render control only if active, else render bypassed indicator */}
                           {isFilterActive ? (
                             <div className="space-y-1 pt-1">
-                              {uniqueVals.every(v => typeof v === 'number') ? (
+                              {uniqueVals.every(
+                                (v) => typeof v === "number",
+                              ) ? (
                                 <div className="flex items-center space-x-3">
-                                  <span className="text-[10px] text-slate-655 font-mono">
+                                  <span className="text-[10px] text-slate-500 font-mono">
                                     {uniqueVals[0]}
                                   </span>
                                   <input
@@ -787,35 +946,43 @@ export default function App() {
                                     value={selectedIdx}
                                     onChange={(e) => {
                                       const idx = parseInt(e.target.value, 10);
-                                      setFilters(prev => ({ ...prev, [dim]: idx }));
+                                      setFilters((prev) => ({
+                                        ...prev,
+                                        [dim]: idx,
+                                      }));
                                     }}
                                     className="flex-1 accent-indigo-500 h-1 bg-slate-800 rounded-lg cursor-pointer appearance-none focus:outline-none"
                                   />
-                                  <span className="text-[10px] text-slate-655 font-mono">
+                                  <span className="text-[10px] text-slate-500 font-mono">
                                     {uniqueVals[uniqueVals.length - 1]}
                                   </span>
                                 </div>
                               ) : (
                                 <select
-                                  className="w-full bg-slate-950 border border-slate-850 rounded-lg p-1.5 text-xs font-mono text-slate-300 animate-fade-in"
+                                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-1.5 text-xs font-mono text-slate-300"
                                   value={selectedIdx}
                                   onChange={(e) => {
                                     const idx = parseInt(e.target.value, 10);
-                                    setFilters(prev => ({ ...prev, [dim]: idx }));
+                                    setFilters((prev) => ({
+                                      ...prev,
+                                      [dim]: idx,
+                                    }));
                                   }}
                                 >
                                   {uniqueVals.map((v, i) => (
-                                    <option key={v} value={i}>{v}</option>
+                                    <option key={v} value={i}>
+                                      {v}
+                                    </option>
                                   ))}
                                 </select>
                               )}
-                              <div className="flex items-center justify-between text-[9px] text-slate-555 font-mono">
+                              <div className="flex items-center justify-between text-[9px] text-slate-500 font-mono">
                                 <span>Steps: {uniqueVals.length}</span>
-                                <span>Tolerance: $10^{-6}$ epsilon</span>
+                                <span>Tolerance: $10^{`{-6}`} $ epsilon</span>
                               </div>
                             </div>
                           ) : (
-                            <div className="py-2.5 text-center text-[10px] text-slate-555 font-mono bg-slate-950/40 rounded-lg border border-slate-900 border-dashed">
+                            <div className="py-2.5 text-center text-[10px] text-slate-500 font-mono bg-slate-950/40 rounded-lg border border-slate-900 border-dashed">
                               Bypassed: Entire range is dynamically integrated
                             </div>
                           )}
@@ -823,10 +990,13 @@ export default function App() {
                       );
                     })}
 
-                    <div className="bg-slate-900/80 border border-slate-850 p-3 rounded-xl text-center flex items-center justify-between text-xs font-medium">
-                      <span className="text-slate-400">Sliced Data Subset:</span>
+                    <div className="bg-slate-900/80 border border-slate-800/80 p-3 rounded-xl text-center flex items-center justify-between text-xs font-medium">
+                      <span className="text-slate-400">
+                        Sliced Data Subset:
+                      </span>
                       <span className="font-mono text-indigo-400 bg-indigo-500/5 border border-indigo-500/10 px-2 py-0.5 rounded">
-                        {filteredRows.length.toLocaleString()} of {data.rows.length.toLocaleString()} rows
+                        {filteredRows.length.toLocaleString()} of{" "}
+                        {data.rows.length.toLocaleString()} rows
                       </span>
                     </div>
                   </div>
@@ -836,17 +1006,17 @@ export default function App() {
           )}
         </section>
 
-        {/* RIGHT VISUALIZATION: Plotly Canvas & LaTeX annotations */}
+        {/* RIGHT VISUALIZATION SECTION */}
         <section className="lg:col-span-8 flex flex-col space-y-6">
-          
-          {/* Main Heatmap Render Window */}
           <div className="bg-slate-900/35 backdrop-blur-md border border-slate-900 shadow-2xl rounded-3xl p-6 flex flex-col relative min-h-[550px] justify-between">
-            
-            {/* Live Visualizer Header & Options */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-900 pb-4 mb-4">
               <div>
-                <h3 className="font-bold text-slate-200 text-base">Visualization Studio</h3>
-                <p className="text-xs text-slate-555">Interactive live scientific plotting grid</p>
+                <h3 className="font-bold text-slate-200 text-base">
+                  Visualization Studio
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Interactive live scientific plotting grid
+                </p>
               </div>
 
               {data && isValidMapping && (
@@ -854,7 +1024,7 @@ export default function App() {
                   <div className="flex items-center space-x-1.5 text-xs text-slate-400">
                     <span>Colormap:</span>
                     <select
-                      className="bg-slate-950 border border-slate-850 text-xs rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold"
+                      className="bg-slate-950 border border-slate-800 text-xs rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold"
                       value={colormap}
                       onChange={(e) => setColormap(e.target.value)}
                     >
@@ -871,115 +1041,181 @@ export default function App() {
               )}
             </div>
 
-            {/* Plotly Canvas */}
+            {/* Single Unified Plotly Canvas */}
             <div className="flex-1 flex items-center justify-center p-2 relative">
               {!data ? (
                 <div className="text-center p-8 flex flex-col items-center max-w-sm">
                   <div className="w-16 h-16 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-500 mb-4">
                     <Database className="w-8 h-8 animate-pulse" />
                   </div>
-                  <h4 className="font-semibold text-slate-350 text-sm">Visualizer Ready</h4>
-                  <p className="text-xs text-slate-555 mt-1.5 leading-relaxed">
-                    Upload a physics simulation CSV file or drop your parameter sweep data to view the interactive live heatmap.
+                  <h4 className="font-semibold text-slate-300 text-sm">
+                    Visualizer Ready
+                  </h4>
+                  <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                    Upload a physics simulation CSV file or drop your parameter
+                    sweep data to view the interactive live heatmap.
                   </p>
                 </div>
               ) : !isValidMapping ? (
                 <div className="text-center p-8 flex flex-col items-center max-w-sm text-slate-400">
                   <AlertTriangle className="w-10 h-10 text-rose-500 mb-3" />
-                  <h4 className="font-semibold text-rose-400 text-sm">Mapping Conflict</h4>
-                  <p className="text-xs text-slate-555 mt-1.5">
-                    Please map unique CSV columns to X-Axis, Y-Axis, and Z-Axis in the Mapping Panel.
+                  <h4 className="font-semibold text-rose-400 text-sm">
+                    Mapping Conflict
+                  </h4>
+                  <p className="text-xs text-slate-500 mt-1.5">
+                    Please map unique CSV columns to X-Axis, Y-Axis, and Z-Axis
+                    in the Mapping Panel.
                   </p>
                 </div>
               ) : heatmapGrid ? (
                 <div className="w-full h-full flex items-center justify-center overflow-hidden bg-white p-4 rounded-2xl border border-slate-200/80 shadow-inner">
                   <Plot
                     data={[
+                      // Trace 0: Base Heatmap
                       {
                         x: heatmapGrid.x,
                         y: heatmapGrid.y,
                         z: heatmapGrid.z,
-                        type: 'heatmap',
+                        type: "heatmap",
                         colorscale: colormap,
-                        zsmooth: smoothHeatmap ? 'best' : false,
-                        // No internal grid cell gaps to ensure continuous Matplotlib/APS style surface
+                        zsmooth: smoothHeatmap ? "best" : false,
                         xgap: 0,
                         ygap: 0,
                         zmin: colorLimits.finalZMin,
                         zmax: colorLimits.finalZMax,
                         colorbar: {
-                          // Native title left empty to rely on the custom rotated annotation below
-                          tickfont: { color: '#000000', family: "'Computer Modern', 'Times New Roman', serif", size: 11 },
-                          xpad: 15
+                          tickfont: {
+                            color: "#000000",
+                            family:
+                              "'Computer Modern', 'Times New Roman', serif",
+                            size: 11,
+                          },
+                          xpad: 15,
                         },
-                        hoverongaps: false
+                        hoverongaps: false,
                       },
+                      // Trace 1: Dynamic Contour Lines Overlay
+                      ...(showContours
+                        ? [
+                            {
+                              type: "contour",
+                              x: heatmapGrid.x,
+                              y: heatmapGrid.y,
+                              z: heatmapGrid.z,
+                              showscale: false,
+                              autocontour: false,
+                              contours: {
+                                coloring: "none",
+                                start: colorLimits.finalZMin,
+                                end: colorLimits.finalZMax,
+                                size:
+                                  (colorLimits.finalZMax -
+                                    colorLimits.finalZMin) /
+                                  contourLevels,
+                                showlabels: showContourLabels,
+                                labelfont: {
+                                  family: "serif",
+                                  size: 9,
+                                  color: "#000000",
+                                },
+                              },
+                              line: {
+                                color: "rgba(255, 255, 255, 0.65)",
+                                width: 1.2,
+                                smoothing: 0.8,
+                              },
+                              hoverinfo: "none",
+                            },
+                          ]
+                        : []),
                     ]}
                     layout={{
-                      title: { 
-                        text: titleInput, 
-                        font: { color: '#000000', family: "'Computer Modern', 'Times New Roman', serif", size: 15 },
-                        y: 0.96
-                      },
-                      xaxis: { 
-                        title: { 
-                          text: xTitleInput, 
-                          font: { color: '#000000', family: "'Computer Modern', 'Times New Roman', serif", size: 13 },
-                          standoff: 20 // Standoff to prevent overlapping ticks
+                      title: {
+                        text: titleInput,
+                        font: {
+                          color: "#000000",
+                          family: "'Computer Modern', 'Times New Roman', serif",
+                          size: 15,
                         },
-                        // APS Bounding Box & Ticks Outside
+                        y: 0.96,
+                      },
+                      xaxis: {
+                        title: {
+                          text: xTitleInput,
+                          font: {
+                            color: "#000000",
+                            family:
+                              "'Computer Modern', 'Times New Roman', serif",
+                            size: 13,
+                          },
+                          standoff: 20,
+                        },
                         showline: true,
-                        mirror: 'allticks',
-                        linecolor: '#000000',
+                        mirror: "allticks",
+                        linecolor: "#000000",
                         linewidth: 1.5,
-                        ticks: 'outside',
+                        ticks: "outside",
                         ticklen: 5,
-                        tickcolor: '#000000',
+                        tickcolor: "#000000",
                         showgrid: false,
                         zeroline: false,
-                        tickfont: { color: '#000000', family: "'Computer Modern', 'Times New Roman', serif", size: 11 }
-                      },
-                      yaxis: { 
-                        title: { 
-                          text: yTitleInput, 
-                          font: { color: '#000000', family: "'Computer Modern', 'Times New Roman', serif", size: 13 },
-                          standoff: 20
+                        tickfont: {
+                          color: "#000000",
+                          family: "'Computer Modern', 'Times New Roman', serif",
+                          size: 11,
                         },
-                        // APS Bounding Box & Ticks Outside
+                      },
+                      yaxis: {
+                        title: {
+                          text: yTitleInput,
+                          font: {
+                            color: "#000000",
+                            family:
+                              "'Computer Modern', 'Times New Roman', serif",
+                            size: 13,
+                          },
+                          standoff: 20,
+                        },
                         showline: true,
-                        mirror: 'allticks',
-                        linecolor: '#000000',
+                        mirror: "allticks",
+                        linecolor: "#000000",
                         linewidth: 1.5,
-                        ticks: 'outside',
+                        ticks: "outside",
                         ticklen: 5,
-                        tickcolor: '#000000',
+                        tickcolor: "#000000",
                         showgrid: false,
                         zeroline: false,
-                        tickfont: { color: '#000000', family: "'Computer Modern', 'Times New Roman', serif", size: 11 }
+                        tickfont: {
+                          color: "#000000",
+                          family: "'Computer Modern', 'Times New Roman', serif",
+                          size: 11,
+                        },
                       },
                       annotations: [
                         {
-                          xref: 'paper',
-                          yref: 'paper',
-                          x: 1.15, // positioned exactly to the right of the colorbar ticks to avoid collision
+                          xref: "paper",
+                          yref: "paper",
+                          x: 1.15,
                           y: 0.5,
                           text: zTitleInput,
-                          textangle: -90, // vertical bottom-to-top rotation (APS standard)
+                          textangle: -90,
                           showarrow: false,
-                          font: { 
-                            family: "'Computer Modern', 'Times New Roman', serif", 
-                            size: 13, 
-                            color: '#000000' 
-                          }
-                        }
+                          font: {
+                            family:
+                              "'Computer Modern', 'Times New Roman', serif",
+                            size: 13,
+                            color: "#000000",
+                          },
+                        },
                       ],
-                      // High-contrast clean white background for academic vector exports
-                      paper_bgcolor: '#ffffff',
-                      plot_bgcolor: '#ffffff',
-                      font: { color: '#000000', family: "'Computer Modern', 'Times New Roman', serif" },
-                      // Right margin adjusted to 120 as requested by the user to avoid clipping Z-axis label
+                      paper_bgcolor: "#ffffff",
+                      plot_bgcolor: "#ffffff",
+                      font: {
+                        color: "#000000",
+                        family: "'Computer Modern', 'Times New Roman', serif",
+                      },
                       margin: { l: 80, r: 120, t: 60, b: 70 },
-                      autosize: true
+                      autosize: true,
                     }}
                     useResizeHandler={true}
                     className="w-full min-h-[480px] h-full"
@@ -1002,19 +1238,20 @@ export default function App() {
           {/* LaTeX Annotations & Colorbar Range overrides */}
           {data && isValidMapping && (
             <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-              
               {/* LaTeX Labels Customizer */}
               <div className="bg-slate-900/55 backdrop-blur-md border border-slate-900 shadow-2xl rounded-2xl p-5 space-y-4 md:col-span-8">
-                <h3 className="text-sm font-semibold tracking-wide text-slate-355 uppercase">
+                <h3 className="text-sm font-semibold tracking-wide text-slate-300 uppercase">
                   LaTeX Annotations Editor
                 </h3>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-xs text-slate-500 font-semibold uppercase">Plot Title</label>
+                    <label className="text-xs text-slate-500 font-semibold uppercase">
+                      Plot Title
+                    </label>
                     <input
                       type="text"
-                      className="w-full bg-slate-950 border border-slate-850 hover:border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      className="w-full bg-slate-950 border border-slate-800 hover:border-slate-700 rounded-xl px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                       value={titleInput}
                       onChange={(e) => {
                         setTitleInput(e.target.value);
@@ -1022,16 +1259,23 @@ export default function App() {
                       }}
                     />
                     <div className="mt-1 flex items-center space-x-2">
-                      <span className="text-[10px] text-slate-650 font-mono">Render:</span>
-                      <MathJaxPreview text={titleInput} className="text-[11px] text-slate-400 italic" />
+                      <span className="text-[10px] text-slate-500 font-mono">
+                        Render:
+                      </span>
+                      <MathJaxPreview
+                        text={titleInput}
+                        className="text-[11px] text-slate-400 italic"
+                      />
                     </div>
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-xs text-slate-500 font-semibold uppercase">Colorbar (Z)</label>
+                    <label className="text-xs text-slate-500 font-semibold uppercase">
+                      Colorbar (Z)
+                    </label>
                     <input
                       type="text"
-                      className="w-full bg-slate-950 border border-slate-850 hover:border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      className="w-full bg-slate-950 border border-slate-800 hover:border-slate-700 rounded-xl px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                       value={zTitleInput}
                       onChange={(e) => {
                         setZTitleInput(e.target.value);
@@ -1039,16 +1283,23 @@ export default function App() {
                       }}
                     />
                     <div className="mt-1 flex items-center space-x-2">
-                      <span className="text-[10px] text-slate-655 font-mono">Render:</span>
-                      <MathJaxPreview text={zTitleInput} className="text-[11px] text-slate-400 italic" />
+                      <span className="text-[10px] text-slate-500 font-mono">
+                        Render:
+                      </span>
+                      <MathJaxPreview
+                        text={zTitleInput}
+                        className="text-[11px] text-slate-400 italic"
+                      />
                     </div>
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-xs text-slate-500 font-semibold uppercase">X-Axis Label</label>
+                    <label className="text-xs text-slate-500 font-semibold uppercase">
+                      X-Axis Label
+                    </label>
                     <input
                       type="text"
-                      className="w-full bg-slate-950 border border-slate-850 hover:border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      className="w-full bg-slate-950 border border-slate-800 hover:border-slate-700 rounded-xl px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                       value={xTitleInput}
                       onChange={(e) => {
                         setXTitleInput(e.target.value);
@@ -1056,16 +1307,23 @@ export default function App() {
                       }}
                     />
                     <div className="mt-1 flex items-center space-x-2">
-                      <span className="text-[10px] text-slate-655 font-mono">Render:</span>
-                      <MathJaxPreview text={xTitleInput} className="text-[11px] text-slate-400 italic" />
+                      <span className="text-[10px] text-slate-500 font-mono">
+                        Render:
+                      </span>
+                      <MathJaxPreview
+                        text={xTitleInput}
+                        className="text-[11px] text-slate-400 italic"
+                      />
                     </div>
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-xs text-slate-500 font-semibold uppercase">Y-Axis Label</label>
+                    <label className="text-xs text-slate-500 font-semibold uppercase">
+                      Y-Axis Label
+                    </label>
                     <input
                       type="text"
-                      className="w-full bg-slate-950 border border-slate-850 hover:border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      className="w-full bg-slate-950 border border-slate-800 hover:border-slate-700 rounded-xl px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                       value={yTitleInput}
                       onChange={(e) => {
                         setYTitleInput(e.target.value);
@@ -1073,8 +1331,13 @@ export default function App() {
                       }}
                     />
                     <div className="mt-1 flex items-center space-x-2">
-                      <span className="text-[10px] text-slate-655 font-mono">Render:</span>
-                      <MathJaxPreview text={yTitleInput} className="text-[11px] text-slate-400 italic" />
+                      <span className="text-[10px] text-slate-500 font-mono">
+                        Render:
+                      </span>
+                      <MathJaxPreview
+                        text={yTitleInput}
+                        className="text-[11px] text-slate-400 italic"
+                      />
                     </div>
                   </div>
                 </div>
@@ -1083,7 +1346,7 @@ export default function App() {
               {/* Color Scaling Override Panel */}
               <div className="bg-slate-900/55 backdrop-blur-md border border-slate-900 shadow-2xl rounded-2xl p-5 space-y-4 md:col-span-4 flex flex-col justify-between">
                 <div className="space-y-3">
-                  <h3 className="text-sm font-semibold tracking-wide text-slate-350 uppercase">
+                  <h3 className="text-sm font-semibold tracking-wide text-slate-300 uppercase">
                     Colorbar Scaling Range
                   </h3>
 
@@ -1095,7 +1358,10 @@ export default function App() {
                       onChange={(e) => setAutoScaleColor(e.target.checked)}
                       className="accent-indigo-500 h-4 w-4 rounded border-slate-800 bg-slate-950 focus:ring-indigo-500"
                     />
-                    <label htmlFor="auto-scale-checkbox" className="text-xs font-semibold text-slate-400 cursor-pointer">
+                    <label
+                      htmlFor="auto-scale-checkbox"
+                      className="text-xs font-semibold text-slate-400 cursor-pointer"
+                    >
                       Auto-scale range (pcolormesh style)
                     </label>
                   </div>
@@ -1109,9 +1375,11 @@ export default function App() {
                         type="number"
                         step={0.1}
                         disabled={autoScaleColor}
-                        className="w-full bg-slate-950 disabled:bg-slate-900/40 disabled:text-slate-600 border border-slate-850 hover:border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono"
+                        className="w-full bg-slate-950 disabled:bg-slate-900/40 disabled:text-slate-600 border border-slate-800 hover:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono"
                         value={manualZMin}
-                        onChange={(e) => setManualZMin(parseFloat(e.target.value) || 0)}
+                        onChange={(e) =>
+                          setManualZMin(parseFloat(e.target.value) || 0)
+                        }
                       />
                     </div>
                     <div>
@@ -1122,55 +1390,70 @@ export default function App() {
                         type="number"
                         step={0.1}
                         disabled={autoScaleColor}
-                        className="w-full bg-slate-950 disabled:bg-slate-900/40 disabled:text-slate-600 border border-slate-850 hover:border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono"
+                        className="w-full bg-slate-950 disabled:bg-slate-900/40 disabled:text-slate-600 border border-slate-800 hover:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono"
                         value={manualZMax}
-                        onChange={(e) => setManualZMax(parseFloat(e.target.value) || 0)}
+                        onChange={(e) =>
+                          setManualZMax(parseFloat(e.target.value) || 0)
+                        }
                       />
                     </div>
                   </div>
                 </div>
 
-                <div className="border-t border-slate-850 pt-3">
+                <div className="border-t border-slate-800/80 pt-3">
                   <div className="flex justify-between items-center text-[10px] text-slate-500">
                     <span>Dynamic limits:</span>
                     <span className="font-mono">
-                      {heatmapGrid ? `[${Math.min(...heatmapGrid.z.flat().filter((x): x is number => x !== null)).toFixed(2)}, ${Math.max(...heatmapGrid.z.flat().filter((x): x is number => x !== null)).toFixed(2)}]` : 'N/A'}
+                      {heatmapGrid
+                        ? `[${Math.min(...heatmapGrid.z.flat().filter((x): x is number => x !== null)).toFixed(2)}, ${Math.max(...heatmapGrid.z.flat().filter((x): x is number => x !== null)).toFixed(2)}]`
+                        : "N/A"}
                     </span>
                   </div>
                 </div>
               </div>
-
             </div>
           )}
 
-          {/* Svg Export settings & buttons */}
+          {/* SVG Export & Python Copy Buttons */}
           {data && isValidMapping && (
             <div className="bg-slate-900/55 backdrop-blur-md border border-slate-900 shadow-2xl rounded-2xl p-5 grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
               <div className="md:col-span-8">
-                <h3 className="text-sm font-bold text-slate-250">SVG Publication Canvas Layout</h3>
-                <p className="text-[11px] text-slate-555 mt-1 leading-relaxed">
-                  Export vector designs directly at publication-ready specs. The margins (`margin: l:80, r:120, t:60, b:70`) and standoff spacing properties are embedded in the canvas layout to preserve mathematical labels and colorbar titles from being clipped outside viewboxes.
+                <h3 className="text-sm font-bold text-slate-200">
+                  SVG Publication Canvas Layout
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                  Export vector designs directly at publication-ready specs. The
+                  margins and standoff spacing are configured to prevent
+                  clipping of axis titles and colorbars.
                 </p>
               </div>
 
               <div className="md:col-span-4 flex flex-col space-y-3">
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="block text-[9px] text-slate-550 font-bold uppercase mb-0.5">Width (px)</label>
+                    <label className="block text-[9px] text-slate-500 font-bold uppercase mb-0.5">
+                      Width (px)
+                    </label>
                     <input
                       type="number"
-                      className="w-full bg-slate-950 border border-slate-850 rounded-lg px-2 py-1 text-xs text-slate-200 font-mono"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-xs text-slate-200 font-mono"
                       value={exportWidth}
-                      onChange={(e) => setExportWidth(parseInt(e.target.value, 10) || 800)}
+                      onChange={(e) =>
+                        setExportWidth(parseInt(e.target.value, 10) || 800)
+                      }
                     />
                   </div>
                   <div>
-                    <label className="block text-[9px] text-slate-555 font-bold uppercase mb-0.5">Height (px)</label>
+                    <label className="block text-[9px] text-slate-500 font-bold uppercase mb-0.5">
+                      Height (px)
+                    </label>
                     <input
                       type="number"
-                      className="w-full bg-slate-950 border border-slate-850 rounded-lg px-2 py-1 text-xs text-slate-200 font-mono"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-xs text-slate-200 font-mono"
                       value={exportHeight}
-                      onChange={(e) => setExportHeight(parseInt(e.target.value, 10) || 600)}
+                      onChange={(e) =>
+                        setExportHeight(parseInt(e.target.value, 10) || 600)
+                      }
                     />
                   </div>
                 </div>
@@ -1178,22 +1461,36 @@ export default function App() {
                 <button
                   onClick={handleExportSVG}
                   disabled={isExporting}
-                  className="w-full flex items-center justify-center space-x-2 bg-gradient-to-r from-indigo-650 to-indigo-600 hover:from-indigo-600 hover:to-indigo-500 text-white hover:text-indigo-200 border border-indigo-600/30 rounded-xl py-2.5 text-xs font-bold shadow-lg transition duration-200 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none"
+                  className="w-full flex items-center justify-center space-x-2 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white border border-indigo-500/30 rounded-xl py-2.5 text-xs font-bold shadow-lg transition duration-200 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none"
                 >
-                  <Download className={`w-3.5 h-3.5 ${isExporting ? 'animate-spin' : ''}`} />
-                  <span>{isExporting ? 'Generating Vector SVG...' : 'Export Publication SVG'}</span>
+                  <Download
+                    className={`w-3.5 h-3.5 ${isExporting ? "animate-spin" : ""}`}
+                  />
+                  <span>
+                    {isExporting
+                      ? "Generating Vector SVG..."
+                      : "Export Publication SVG"}
+                  </span>
                 </button>
 
                 <button
                   onClick={handleCopyPythonCode}
                   className={`w-full flex items-center justify-center space-x-2 border rounded-xl py-2.5 text-xs font-bold shadow-lg transition duration-200 active:scale-[0.98] ${
-                    copiedPython 
-                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' 
-                      : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-850 hover:text-slate-100'
+                    copiedPython
+                      ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                      : "bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800 hover:text-slate-100"
                   }`}
                 >
-                  {copiedPython ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copiedPython ? 'Copied Python Script!' : 'Copy Python Code'}</span>
+                  {copiedPython ? (
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                  ) : (
+                    <Copy className="w-3.5 h-3.5" />
+                  )}
+                  <span>
+                    {copiedPython
+                      ? "Copied Python Script!"
+                      : "Copy Python Code"}
+                  </span>
                 </button>
               </div>
             </div>
@@ -1201,9 +1498,12 @@ export default function App() {
         </section>
       </main>
 
-      {/* Footer Branding */}
-      <footer className="border-t border-slate-900/60 py-4 px-6 text-center text-xs text-slate-655 mt-auto">
-        <p>&copy; {new Date().getFullYear()} NDHeat Visualizer Studio. Designed for scientific publication layout analysis.</p>
+      {/* Footer */}
+      <footer className="border-t border-slate-900/60 py-4 px-6 text-center text-xs text-slate-500 mt-auto">
+        <p>
+          &copy; {new Date().getFullYear()} NDHeat Visualizer Studio. Designed
+          for scientific publication layout analysis.
+        </p>
       </footer>
     </div>
   );
