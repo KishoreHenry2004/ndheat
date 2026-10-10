@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from "react";
 import Papa from "papaparse";
 import Plot from "react-plotly.js";
 import Plotly from "plotly.js-dist-min";
+import posthog from "posthog-js";
 import {
   Upload,
   Settings,
@@ -17,6 +18,8 @@ import {
   Copy,
   Activity,
   X,
+  Sparkles,
+  ExternalLink,
 } from "lucide-react";
 import { generatePythonCode } from "./utils/generatePythonCode";
 
@@ -30,6 +33,47 @@ declare global {
     };
   }
 }
+
+// -----------------------------------------------------------------------------
+// POSTHOG CLOUD TELEMETRY & GOOGLE FORM CONFIGURATION
+// -----------------------------------------------------------------------------
+const POSTHOG_KEY = "phc_A37nX9nbEy8zmDHwMF97Zpe4HxyaiDcwTfGFaaWmMy4W";
+const POSTHOG_HOST = "https://us.i.posthog.com";
+const GOOGLE_FORM_URL = "https://forms.gle/925SEq5bqKDQMGuc6";
+
+if (typeof window !== "undefined") {
+  posthog.init(POSTHOG_KEY, {
+    api_host: POSTHOG_HOST,
+    autocapture: true,
+    capture_pageview: true,
+  });
+}
+
+// Unified Telemetry Handler
+const trackEvent = (
+  eventName: string,
+  properties: Record<string, any> = {},
+) => {
+  try {
+    posthog.capture(eventName, properties);
+
+    // Keep session backup in localStorage for instant developer verification
+    const existingLogs = JSON.parse(
+      localStorage.getItem("ndheat_analytics_logs") || "[]",
+    );
+    existingLogs.push({
+      event: eventName,
+      timestamp: new Date().toISOString(),
+      properties,
+    });
+    localStorage.setItem(
+      "ndheat_analytics_logs",
+      JSON.stringify(existingLogs.slice(-100)),
+    );
+  } catch (err) {
+    // Fail silently so UI execution remains uninterruptible
+  }
+};
 
 interface ParsedData {
   headers: string[];
@@ -65,7 +109,6 @@ const MathJaxPreview: React.FC<{ text: string; className?: string }> = ({
   return <div ref={containerRef} className={className} />;
 };
 
-// Parameter classification helper to detect if a header is an independent parameter or dependent metric
 const isIndependentParameter = (header: string, uniqueVals: any[]) => {
   const nameLower = header.toLowerCase();
   if (
@@ -129,7 +172,8 @@ export default function App() {
   const [manualZMin, setManualZMin] = useState<number>(-0.9);
   const [manualZMax, setManualZMax] = useState<number>(0.9);
 
-  // Export properties
+  // Export properties & Format Toggle (SVG vs PNG)
+  const [exportFormat, setExportFormat] = useState<"svg" | "png">("svg");
   const [exportWidth, setExportWidth] = useState<number>(800);
   const [exportHeight, setExportHeight] = useState<number>(600);
   const [isExporting, setIsExporting] = useState<boolean>(false);
@@ -140,15 +184,16 @@ export default function App() {
     {},
   );
 
-  // Plotly Div element reference
+  // Plotly Div element references
   const graphDivRef = useRef<any>(null);
+  const lineCutDivRef = useRef<any>(null);
 
   // Contour Overlay States
   const [showContours, setShowContours] = useState<boolean>(false);
   const [contourLevels, setContourLevels] = useState<number>(8);
   const [showContourLabels, setShowContourLabels] = useState<boolean>(true);
 
-  // V1.2: 1D Line Cut (Cross-Section) State
+  // V1.2: 1D Line Cut (Cross-Section) State & Export
   const [cutAxis, setCutAxis] = useState<"horizontal" | "vertical">(
     "horizontal",
   );
@@ -157,6 +202,15 @@ export default function App() {
     y: number;
   } | null>(null);
   const [showLineCut, setShowLineCut] = useState<boolean>(false);
+  const [isExporting1D, setIsExporting1D] = useState<boolean>(false);
+
+  // Initial load telemetry
+  useEffect(() => {
+    trackEvent("page_view", {
+      path: window.location.pathname,
+      referrer: document.referrer || "direct",
+    });
+  }, []);
 
   // CSV Ingestion Handler
   const processCSV = (file: File) => {
@@ -207,9 +261,15 @@ export default function App() {
         setYAxis(yDefault);
         setZAxis(zDefault);
 
-        // Reset any prior selected line cuts
         setSelectedPoint(null);
         setShowLineCut(false);
+
+        trackEvent("csv_uploaded", {
+          filename: file.name,
+          rowCount: rows.length,
+          columnCount: headers.length,
+          isDemo,
+        });
 
         if (isDemo) {
           const initialFilters = {
@@ -532,7 +592,7 @@ export default function App() {
     };
   }, [heatmapGrid, autoScaleColor, manualZMin, manualZMax]);
 
-  // V1.2: Compute 1D Slice Profile Data based on user click
+  // 1D Slice Profile Data
   const lineCutProfile = useMemo(() => {
     if (!heatmapGrid || !selectedPoint) return null;
 
@@ -621,25 +681,62 @@ export default function App() {
     colorLimits,
   ]);
 
-  const handleExportSVG = () => {
+  // Export 2D Heatmap (SVG or 300 DPI PNG)
+  const handleExportHeatmap = () => {
     if (!graphDivRef.current) return;
     setIsExporting(true);
 
+    trackEvent("export_2d_heatmap", {
+      format: exportFormat,
+      width: exportWidth,
+      height: exportHeight,
+    });
+
     setTimeout(() => {
       Plotly.downloadImage(graphDivRef.current, {
-        format: "svg",
+        format: exportFormat,
         width: exportWidth,
         height: exportHeight,
-        filename: data?.filename
-          ? `${data.filename.split(".")[0]}_heatmap`
-          : "ndheat_publication_plot",
+        ...(exportFormat === "png" ? { scale: 3 } : {}),
+        filename: `${
+          data?.filename ? data.filename.split(".")[0] : "ndheat"
+        }_heatmap`,
       })
         .then(() => setIsExporting(false))
         .catch((err: any) => {
           console.error("Export failed", err);
           setIsExporting(false);
         });
-    }, 300);
+    }, 250);
+  };
+
+  // Export 1D Cross-Section (SVG or 300 DPI PNG)
+  const handleExport1DProfile = () => {
+    if (!lineCutDivRef.current) return;
+    setIsExporting1D(true);
+
+    trackEvent("export_1d_slice", {
+      format: exportFormat,
+      cutAxis,
+      point: selectedPoint,
+    });
+
+    setTimeout(() => {
+      Plotly.downloadImage(lineCutDivRef.current, {
+        format: exportFormat,
+        width: 700,
+        height: 380,
+        ...(exportFormat === "png" ? { scale: 3 } : {}),
+        filename: `${
+          data?.filename ? data.filename.split(".")[0] : "ndheat"
+        }_1d_cut_${cutAxis}`,
+      })
+        .then(() => setIsExporting1D(false))
+        .catch((err: any) => {
+          console.error("1D Cut Export failed", err);
+          setIsExporting1D(false);
+        });
+    }, 250);
   };
 
   const handleCopyPythonCode = () => {
@@ -662,12 +759,18 @@ export default function App() {
       showContours,
       contourLevels,
       showContourLabels,
+      selectedPoint,
+      cutAxis,
     });
 
     navigator.clipboard
       .writeText(pythonCode)
       .then(() => {
         setCopiedPython(true);
+        trackEvent("python_code_copied", {
+          has1DCut: !!selectedPoint,
+          hasContours: showContours,
+        });
         setTimeout(() => setCopiedPython(false), 2000);
       })
       .catch((err) => {
@@ -692,8 +795,27 @@ export default function App() {
       <div className="fixed top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-indigo-500/10 blur-[120px] pointer-events-none" />
       <div className="fixed bottom-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full bg-cyan-500/10 blur-[120px] pointer-events-none" />
 
+      {/* Google Form Live Feedback & Waitlist Announcement Banner */}
+      <div className="bg-gradient-to-r from-indigo-950/80 via-slate-900 to-indigo-950/80 border-b border-indigo-900/50 px-4 py-1.5 text-center text-xs flex items-center justify-center gap-2 relative z-50">
+        <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+        <span className="text-slate-300">
+          Building <strong>NDHeat V2.0</strong> (Quiver Vector Fields & Discrete
+          Phase Diagrams).
+        </span>
+        <a
+          href={GOOGLE_FORM_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={() => trackEvent("google_form_banner_clicked")}
+          className="text-indigo-400 hover:text-indigo-300 font-bold underline transition inline-flex items-center space-x-1 ml-1"
+        >
+          <span>Join Pro Waitlist & Request Presets</span>
+          <ExternalLink className="w-3 h-3" />
+        </a>
+      </div>
+
       {/* Header */}
-      <header className="sticky top-0 z-50 backdrop-blur-md bg-slate-950/70 border-b border-slate-900/80 px-6 py-4 flex items-center justify-between">
+      <header className="sticky top-0 z-40 backdrop-blur-md bg-slate-950/70 border-b border-slate-900/80 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-indigo-500/20 font-black text-xl text-white tracking-wider">
             H
@@ -1304,6 +1426,7 @@ export default function App() {
                         const pt = eventData.points[0];
                         setSelectedPoint({ x: pt.x, y: pt.y });
                         setShowLineCut(true);
+                        trackEvent("1d_cell_clicked", { x: pt.x, y: pt.y });
                       }
                     }}
                     onInitialized={(_, graphDiv) => {
@@ -1339,7 +1462,7 @@ export default function App() {
                   </p>
                 </div>
 
-                <div className="flex items-center space-x-3">
+                <div className="flex items-center space-x-2.5">
                   <div className="inline-flex rounded-lg bg-slate-950 p-0.5 border border-slate-800 text-xs">
                     <button
                       onClick={() => setCutAxis("horizontal")}
@@ -1362,6 +1485,25 @@ export default function App() {
                       Cut along Y
                     </button>
                   </div>
+
+                  {/* Panel-Level 1D Export Button */}
+                  <button
+                    onClick={handleExport1DProfile}
+                    disabled={isExporting1D}
+                    className="flex items-center space-x-1.5 bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-slate-200 px-2.5 py-1 rounded-lg text-xs font-semibold transition active:scale-95 disabled:opacity-50"
+                    title={`Download 1D slice as ${exportFormat.toUpperCase()}`}
+                  >
+                    <Download
+                      className={`w-3.5 h-3.5 ${
+                        isExporting1D ? "animate-spin" : ""
+                      }`}
+                    />
+                    <span>
+                      {isExporting1D
+                        ? "Exporting..."
+                        : `Export 1D (${exportFormat.toUpperCase()})`}
+                    </span>
+                  </button>
 
                   <button
                     onClick={() => setShowLineCut(false)}
@@ -1428,6 +1570,12 @@ export default function App() {
                   }}
                   useResizeHandler={true}
                   className="w-full h-full"
+                  onInitialized={(_, graphDiv) => {
+                    lineCutDivRef.current = graphDiv;
+                  }}
+                  onUpdate={(_, graphDiv) => {
+                    lineCutDivRef.current = graphDiv;
+                  }}
                 />
               </div>
             </div>
@@ -1603,7 +1751,15 @@ export default function App() {
                     <span>Dynamic limits:</span>
                     <span className="font-mono">
                       {heatmapGrid
-                        ? `[${Math.min(...heatmapGrid.z.flat().filter((x): x is number => x !== null)).toFixed(2)}, ${Math.max(...heatmapGrid.z.flat().filter((x): x is number => x !== null)).toFixed(2)}]`
+                        ? `[${Math.min(
+                            ...heatmapGrid.z
+                              .flat()
+                              .filter((x): x is number => x !== null),
+                          ).toFixed(2)}, ${Math.max(
+                            ...heatmapGrid.z
+                              .flat()
+                              .filter((x): x is number => x !== null),
+                          ).toFixed(2)}]`
                         : "N/A"}
                     </span>
                   </div>
@@ -1612,21 +1768,52 @@ export default function App() {
             </div>
           )}
 
-          {/* SVG Export & Python Copy Buttons */}
+          {/* SVG/PNG Export & Python Copy Buttons */}
           {data && isValidMapping && (
             <div className="bg-slate-900/55 backdrop-blur-md border border-slate-900 shadow-2xl rounded-2xl p-5 grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
               <div className="md:col-span-8">
                 <h3 className="text-sm font-bold text-slate-200">
-                  SVG Publication Canvas Layout
+                  Publication Figure Canvas Layout
                 </h3>
                 <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
-                  Export vector designs directly at publication-ready specs. The
-                  margins and standoff spacing are configured to prevent
-                  clipping of axis titles and colorbars.
+                  Export vector designs directly at publication-ready specs.
+                  Choose vector SVG for LaTeX manuscripts or 300 DPI PNG for
+                  slides.
                 </p>
               </div>
 
-              <div className="md:col-span-4 flex flex-col space-y-3">
+              <div className="md:col-span-4 flex flex-col space-y-2.5">
+                {/* SVG vs PNG Format Selector */}
+                <div>
+                  <label className="block text-[9px] text-slate-500 font-bold uppercase mb-1">
+                    Export Format
+                  </label>
+                  <div className="grid grid-cols-2 gap-1.5 p-0.5 bg-slate-950 border border-slate-800 rounded-xl text-xs font-semibold">
+                    <button
+                      type="button"
+                      onClick={() => setExportFormat("svg")}
+                      className={`py-1 rounded-lg transition ${
+                        exportFormat === "svg"
+                          ? "bg-indigo-600 text-white shadow"
+                          : "text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      SVG (Vector)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setExportFormat("png")}
+                      className={`py-1 rounded-lg transition ${
+                        exportFormat === "png"
+                          ? "bg-indigo-600 text-white shadow"
+                          : "text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      PNG (300 DPI)
+                    </button>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="block text-[9px] text-slate-500 font-bold uppercase mb-0.5">
@@ -1656,21 +1843,45 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* Primary 2D Heatmap Export Button */}
                 <button
-                  onClick={handleExportSVG}
+                  onClick={handleExportHeatmap}
                   disabled={isExporting}
                   className="w-full flex items-center justify-center space-x-2 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white border border-indigo-500/30 rounded-xl py-2.5 text-xs font-bold shadow-lg transition duration-200 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none"
                 >
                   <Download
-                    className={`w-3.5 h-3.5 ${isExporting ? "animate-spin" : ""}`}
+                    className={`w-3.5 h-3.5 ${
+                      isExporting ? "animate-spin" : ""
+                    }`}
                   />
                   <span>
                     {isExporting
-                      ? "Generating Vector SVG..."
-                      : "Export Publication SVG"}
+                      ? `Generating ${exportFormat.toUpperCase()}...`
+                      : `Export Heatmap (${exportFormat.toUpperCase()})`}
                   </span>
                 </button>
 
+                {/* 1D Cross-Section Export Button */}
+                {showLineCut && (
+                  <button
+                    onClick={handleExport1DProfile}
+                    disabled={isExporting1D}
+                    className="w-full flex items-center justify-center space-x-2 bg-slate-900 border border-slate-800 hover:bg-slate-800 text-indigo-300 rounded-xl py-2 text-xs font-bold shadow transition duration-200 active:scale-[0.98] disabled:opacity-50"
+                  >
+                    <Download
+                      className={`w-3.5 h-3.5 ${
+                        isExporting1D ? "animate-spin" : ""
+                      }`}
+                    />
+                    <span>
+                      {isExporting1D
+                        ? "Exporting 1D..."
+                        : `Export 1D Profile (${exportFormat.toUpperCase()})`}
+                    </span>
+                  </button>
+                )}
+
+                {/* Copy Python Code Button */}
                 <button
                   onClick={handleCopyPythonCode}
                   className={`w-full flex items-center justify-center space-x-2 border rounded-xl py-2.5 text-xs font-bold shadow-lg transition duration-200 active:scale-[0.98] ${
@@ -1697,11 +1908,21 @@ export default function App() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-slate-900/60 py-4 px-6 text-center text-xs text-slate-500 mt-auto">
+      <footer className="border-t border-slate-900/60 py-4 px-6 text-center text-xs text-slate-500 mt-auto flex flex-col sm:flex-row items-center justify-between gap-2 max-w-[1600px] mx-auto w-full">
         <p>
           &copy; {new Date().getFullYear()} NDHeat Visualizer Studio. Designed
           for scientific publication layout analysis.
         </p>
+        <a
+          href={GOOGLE_FORM_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={() => trackEvent("footer_google_form_clicked")}
+          className="text-slate-400 hover:text-indigo-400 transition inline-flex items-center space-x-1"
+        >
+          <span>Request Journal Preset / Feedback</span>
+          <ExternalLink className="w-3 h-3" />
+        </a>
       </footer>
     </div>
   );
