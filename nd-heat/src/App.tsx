@@ -150,6 +150,7 @@ export default function App() {
   const [colormap, setColormap] = useState<string>("Viridis");
   const [smoothHeatmap, setSmoothHeatmap] = useState<boolean>(false);
   const [isDragging, setIsDragging] = useState<boolean>(false);
+  const [isLoadingDemo, setIsLoadingDemo] = useState<boolean>(false);
 
   // LaTeX inputs
   const [titleInput, setTitleInput] = useState<string>("");
@@ -297,6 +298,28 @@ export default function App() {
         alert("Error parsing CSV: " + err.message);
       },
     });
+  };
+
+  // 1-Click Demo Dataset Fetcher
+  const handleLoadDemoData = async () => {
+    try {
+      setIsLoadingDemo(true);
+      const response = await fetch("/synthetic_physics_sweep.csv");
+      if (!response.ok) {
+        throw new Error(
+          "Could not find /synthetic_physics_sweep.csv in the public/ folder.",
+        );
+      }
+      const blob = await response.blob();
+      const demoFile = new File([blob], "synthetic_physics_sweep.csv", {
+        type: "text/csv",
+      });
+      processCSV(demoFile);
+    } catch (err: any) {
+      alert("Failed to load sample dataset: " + err.message);
+    } finally {
+      setIsLoadingDemo(false);
+    }
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -919,6 +942,23 @@ export default function App() {
                       or click to browse local directory
                     </span>
                   </label>
+                </div>
+
+                {/* Instant 1-Click Sample Physics Sweep Button */}
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={handleLoadDemoData}
+                    disabled={isLoadingDemo}
+                    className="w-full py-2.5 px-4 rounded-xl text-xs font-semibold flex items-center justify-center space-x-2 bg-indigo-950/50 hover:bg-indigo-900/60 border border-indigo-700/60 text-indigo-300 hover:text-indigo-200 transition duration-200 shadow-md active:scale-[0.98] disabled:opacity-50 cursor-pointer"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                    <span>
+                      {isLoadingDemo
+                        ? "Loading Sample Sweep..."
+                        : "⚡ Try with Sample Physics Sweep (Lyapunov Exponent)"}
+                    </span>
+                  </button>
                 </div>
               </div>
             ) : (

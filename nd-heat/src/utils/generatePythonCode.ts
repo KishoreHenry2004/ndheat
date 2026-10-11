@@ -43,7 +43,6 @@ export function generatePythonCode(params: {
 
   const displayFilename = filename || "simulation_sweep_data.csv";
 
-  // Map colormaps to matplotlib equivalent names
   const cmapMapping: Record<string, string> = {
     Viridis: "viridis",
     Plasma: "plasma",
@@ -55,7 +54,6 @@ export function generatePythonCode(params: {
   };
   const pyCmap = cmapMapping[colormap] || "viridis";
 
-  // Build dynamic pandas query filters matching epsilon tolerance
   let pyFilters = "";
   Object.entries(activeFilters).forEach(([dim, isActive]) => {
     if (isActive) {
@@ -69,7 +67,6 @@ export function generatePythonCode(params: {
     }
   });
 
-  // Inject contour generation code if toggled on
   const contourSnippet = showContours
     ? `
 # 5b. Isolines / Contour Overlay
@@ -89,36 +86,47 @@ ${
 `
     : "";
 
-  // Inject 1D Cross-Section subplot if a point is selected
-  const lineCutSnippet = selectedPoint
-    ? `
+  let lineCutSnippet = "";
+  if (selectedPoint) {
+    const isHorizontal = cutAxis === "horizontal";
+    const fixedVal = isHorizontal ? selectedPoint.y : selectedPoint.x;
+
+    // Strip outer $ to prevent nested math environments
+    const cleanYLabel = yTitleInput
+      ? yTitleInput.replace(/^\$|\$$/g, "")
+      : `\\text{${yAxis.replace(/_/g, " ")}}`;
+    const cleanXLabel = xTitleInput
+      ? xTitleInput.replace(/^\$|\$$/g, "")
+      : `\\text{${xAxis.replace(/_/g, " ")}}`;
+
+    lineCutSnippet = `
 # -------------------------------------------------------------
 # 9. 1D Cross-Section (Line Cut) Extraction
 # -------------------------------------------------------------
 fig_1d, ax_1d = plt.subplots(figsize=(6.5, 3.8), dpi=300)
 
 ${
-  cutAxis === "horizontal"
-    ? `# Cut along horizontal X at closest Y ~ ${selectedPoint.y}
-target_y = ${selectedPoint.y}
+  isHorizontal
+    ? `# Cut along horizontal X at closest Y ~ ${fixedVal}
+target_y = ${fixedVal}
 closest_y_idx = np.argmin(np.abs(Y - target_y))
 actual_y = Y[closest_y_idx]
 x_profile = X
 z_profile = Z[closest_y_idx, :]
 
 ax_1d.plot(x_profile, z_profile, '-o', color='#4f46e5', markersize=4, linewidth=1.5)
-ax_1d.set_title(rf"1D Cross-Section Profile (${yAxis} = {actual_y:.4f}$)")
+ax_1d.set_title(r"1D Cross-Section Profile ($" + r"${cleanYLabel}" + r" = " + f"{actual_y:.4f}" + r"$)")
 ax_1d.set_xlabel(r"${xTitleInput}")
 ax_1d.set_ylabel(r"${zTitleInput}")`
-    : `# Cut along vertical Y at closest X ~ ${selectedPoint.x}
-target_x = ${selectedPoint.x}
+    : `# Cut along vertical Y at closest X ~ ${fixedVal}
+target_x = ${fixedVal}
 closest_x_idx = np.argmin(np.abs(X - target_x))
 actual_x = X[closest_x_idx]
 y_profile = Y
 z_profile = Z[:, closest_x_idx]
 
 ax_1d.plot(y_profile, z_profile, '-o', color='#4f46e5', markersize=4, linewidth=1.5)
-ax_1d.set_title(rf"1D Cross-Section Profile (${xAxis} = {actual_x:.4f}$)")
+ax_1d.set_title(r"1D Cross-Section Profile ($" + r"${cleanXLabel}" + r" = " + f"{actual_x:.4f}" + r"$)")
 ax_1d.set_xlabel(r"${yTitleInput}")
 ax_1d.set_ylabel(r"${zTitleInput}")`
 }
@@ -131,8 +139,8 @@ for spine in ax_1d.spines.values():
 plt.tight_layout()
 plt.savefig("cross_section_1d.svg", format="svg", bbox_inches='tight')
 print("Successfully generated 1D cross-section figure 'cross_section_1d.svg'.")
-`
-    : "";
+`;
+  }
 
   return `# Place this script in the same folder as '${displayFilename}'
 # or replace with the full file path (e.g., r"C:\\path\\to\\${displayFilename}")
